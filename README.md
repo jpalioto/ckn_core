@@ -1,288 +1,342 @@
+# Cognitive Kernel Networks (CKN)
 
-# **README.md — Cognitive Kernel Networks (CKN)**
-
-### **Tensor-Structured Architectural Geometry**
-
-### **CKN ≡ 𝒦⊗**
+### Root Trust for Privilege-Separated Reasoning in Latent Space  
+### CKN ≡ 𝒦⊗
 
 <p align="center">
   <img src="docs/media/ckn_canonical_logo.jpg" width="260" alt="CKN Tensor Logo (𝒦⊗)">
 </p>
 
-**CKN** is the architectural analogue of **CTN (𝒯⊗)**.
-If CTN is the *client-side manifold*, CKN is the *kernel-side manifold*.
-Both describe the **same geometric control problem** at different privilege levels.
+CKN is a **geometric primitive** for building **privilege-separated reasoning** inside
+high-dimensional neural models.
 
-CKN introduces the idea of a **privileged reasoning subspace** inside a transformer —
-a geometric structure that user input cannot substantially perturb.
+Where CTN (Cognitive Tensor Networks, 𝒯⊗) shapes **user-space geometry** via structured prompts,
+CKN shapes **architecture-level geometry** by defining a **privileged reasoning manifold** that
+user tokens cannot reach *by construction*.
 
-**CKN does not modify weights.**
-**CKN does not prescribe architecture.**
-CKN is a **framework** for thinking about transformer reasoning geometry.
+CKN is:
 
----
-
-# 𝒦⊗ Overview
-
-Where CTN expresses the system prompt as a **declarative cognitive manifold**,
-CKN expresses the *architecture* as a **privileged geometric kernel.**
-
-Together:
-
-```
-      CTN ≡ 𝒯⊗      (prefix manifold, session-level)
-      CKN ≡ 𝒦⊗      (architectural manifold, model-level)
-```
-
-Both operate over the same latent field.
-Both define structured subspaces.
-Both constrain inference within geometric bounds.
-
-**CTN shapes how trajectories begin.
-CKN shapes where trajectories are allowed to evolve.**
-
-**[White Paper (PDF)](docs/CKN_Whitepaper_v0.1.0.pdf)**
+- math, not machinery  
+- a **specification**, not an implementation  
+- a **root trust** concept, not a new architecture  
+- an application of tools model builders already have  
 
 ---
 
-# 𝒦⊗ Interpretation Principle
+## 𝒦⊗ One-Line Intuition
 
-> **The model does not execute a kernel.
-> It computes inside the kernel’s manifold.**
+> **The weights define the conceptual world.  
+> CKN defines the part of that world user tokens can’t touch.**
 
-CKN is not a role, template, behavior, or persona.
-It is a **geometric constraint**:
-a *region* of hidden-state space with privileged stability and invariants.
-
-The model reasons inside that region as long as architectural conditions hold.
+Everything else is engineering on top.
 
 ---
 
-# 𝒦⊗ The Privilege Separation Insight
+## 𝒦⊗ Why Geometry Has To Be Solved Geometrically
 
-Modern transformers treat all input as geometrically equal.
-User instructions, system metadata, safety rules, and adversarial text
-occupy the **same** representational manifold.
+Today, **all constraints and all attacks live in the same space**:
 
-**CKN introduces a split:**
+- system prompts  
+- safety policies  
+- user queries  
+- adversarial text  
 
-```
-Hidden state (H)
- ├── U : User-span   (low-dimensional perturbable space)
- ├── R : Reasoning   (privileged, high-dimensional stable space)
- └── S : Slack       (auxiliary)
-```
+After embedding, they are all just vectors in the same subspace:
 
-With *one key dominance condition*:
+```math
+\text{system tokens} ∈ span(W_E)  
+\text{safety tokens} ∈ span(W_E)  
+\text{user tokens}   ∈ span(W_E)
+````
 
-```
-‖Δh_R‖  >>  ‖Δh_U‖
-```
+So:
 
-This gives the architecture a **kernel-mode analogue**:
-user-span perturbations cannot substantially distort privileged reasoning.
+* safety tokens **compete** with adversarial tokens
+* both pull on the same latent geometry
+* as sequences grow, initial constraints dilute
+* the model’s priors dominate the trajectory
 
----
+This is not a prompt-engineering failure.
+It’s an **architectural limitation**:
 
-# 𝒦⊗ Relationship to CTN (𝒯⊗)
+> You can’t solve a kernel-level problem from user space.
+> Adding more tokens into the same manifold just moves the geometry around.
 
-CTN and CKN are two sides of the same coin:
+CKN’s answer:
 
-### **CTN ≡ 𝒯⊗ (Prefix Geometry)**
-
-* Shapes the inference manifold via structured prompting
-* Defines solver objectives, invariants, syntax masks
-* Operates in the **context window**
-* Session-level stability
-* Intra-manifold control
-
-### **CKN ≡ 𝒦⊗ (Architectural Geometry)**
-
-* Shapes persistent model-level geometry
-* Defines privileged subspaces and invariants
-* Operates in the **hidden state / architecture**
-* Long-horizon stability
-* Inter-manifold control
-
-They unify naturally:
-
-```
-Inference(x) = (CTN ⊕ CKN)  over  H
-```
+> **Move privileged computation into directions user tokens can’t reach.
+> Not by policy. By linear algebra.**
 
 ---
 
-# 𝒦⊗ What CKN *Is*
+## 𝒦⊗ Builder Control → Root Trust
 
-* A geometric ontology for transformer privilege separation
-* A conceptual decomposition of hidden states into user vs. reasoning spaces
-* A framework for reasoning stability across long contexts
-* A companion to CTN, not a replacement
-* A perspective on transformer topology, not a model patch
-* An architectural counterpart to 𝒯⊗
+Model builders **already control** everything that matters:
 
-CKN defines **the shape** of trusted reasoning —
-not how to implement it.
+* latent dimensionality `n`
+* embedding matrix `W_E` (tokens → vectors)
+* unembedding matrix `W_U` (vectors → logits)
+* attention / MLP projection structure
+* internal tokens and reserved embeddings
 
----
+Users only control the **tokens**. They never touch Θ.
 
-# 𝒦⊗ What CKN *Is Not*
+If the builder chooses:
 
-* ❌ Not a new transformer architecture
-* ❌ Not a training algorithm
-* ❌ Not a safety mechanism
-* ❌ Not improved capabilities or truthfulness
-* ❌ Not a method for bypassing alignment
-* ❌ Not weight modification
-* ❌ Not a MoE routing scheme
-* ❌ Not enforceable by prompting alone
-
-CKN is a **map**, not a mechanism.
-Implementers *may* choose to instantiate CKN-like geometry using:
-
-* embedding partitions
-* privileged attention heads
-* routing rules
-* frozen invariants
-* gain asymmetries
-
-…but CKN **does not prescribe these**.
-
-It only describes the geometry they realize.
-
----
-
-# 𝒦⊗ The CKN Kernel (Conceptual)
-
-A Cognitive Kernel Network is abstractly defined as:
-
+```math
+rank(W_E) < dim(ℋ)
 ```
-𝒦⊗ = { R , I , Π , Λ }
+
+then there exist directions in latent space that **no external token can ever express**.
+
+Call:
+
+* `U = span(W_E)` → user-span (reachable by tokens)
+* `R ⊂ ℋ` with `R ∉ U` → privileged directions (unreachable by tokens)
+
+Then:
+
+> **No linear combination of input embeddings can produce a component along `R`.
+> User-space is algebraically confined to `U`.**
+
+That’s **root trust**:
+
+* directions in ℋ that are unreachable from the vocabulary
+* fully visible to the builder
+* fully invisible to user-space
+
+This is not probabilistic, not heuristic, not “alignment”:
+
+> **It’s a hard guarantee from linear algebra.**
+
+---
+
+## 𝒦⊗ From Root Trust to Privilege Separation
+
+Once unreachable directions exist, everything else is design.
+
+CKN uses them to define:
+
+* **User space**: `U = span(W_E)`
+* **Kernel space**: `R ⊂ ℋ` with `R ∉ U` (privileged manifold)
+* **Privilege boundary**: the algebraic separation between `U` and `R`
+
+User tokens:
+
+* live in `U`
+* can perturb `U`
+* *cannot* generate components in `R`
+
+Privileged computation:
+
+* lives in `R`
+* can depend on `U` via a **driver layer** `D : U → R`
+* cannot be rewritten by any combination of user tokens
+
+Information flow is:
+
+```text
+U  ──D──>  R  ──D†──>  U
 ```
 
 Where:
 
-* **R** — privileged reasoning subspace
-* **I** — invariants that persist across inference
-* **Π** — routing / attention policies isolating R
-* **Λ** — gain parameters enforcing subspace dominance
+* `D` is builder-defined (what influence `U` is allowed to have)
+* `D†` maps privileged results back into user-space (what gets revealed)
 
-These are *structural objects*, not code.
+Everything above that — multiple rings, permeable vs strict boundaries, specialized kernels — is **engineering**, not theory.
 
----
+CKN just provides the primitive:
 
-# 𝒦⊗ Why CKN Matters
-
-Transformers today lack **privilege structure**.
-All geometric regions are equally writable via prefix.
-
-This creates instability:
-
-* manifold hopping
-* drift-collapse
-* context poisoning
-* multi-agent failure
-* fragile reasoning modes
-
-CKN provides a **language** to describe how reasoning
-*should* be structured to avoid these pathologies.
-
-CTN stabilizes the prefix-level manifold.
-CKN stabilizes the architectural manifold.
-
-Together they form:
-
-> **A unified theory of transformer cognitive geometry.**
-
----
-
-# 𝒦⊗ Example ASCII Diagram
-
-```
-Transformer Hidden State (H)
-
-   +---------------------------------------------+
-   |                                             |
-   |   Privileged Reasoning Subspace  R          |
-   |       (high-dimensional, stable)            |
-   |                                             |
-   |   +------------------+                      |
-   |   |   User-Span U    |   externally driven  |
-   |   | (low-dim, noisy) |   perturbations       |
-   |   +------------------+                      |
-   |                                             |
-   |   Slack / Auxiliary Space  S                |
-   +---------------------------------------------+
+```text
+unreachable directions → privileged subspaces → mediated access
 ```
 
 ---
 
-# 𝒦⊗ Whitepaper
+## 𝒦⊗ What CKN Is
 
-For full mathematical treatment:
+CKN is a **geometric specification** defining a kernel:
 
-**[CKN Whitepaper (PDF)](docs/CKN_Whitepaper_v0.2.0.pdf)**
+```text
+𝒦⊗ = ( R, D, I, Λ, d )
+```
 
-This includes:
+Where:
 
-* manifold decomposition
-* privilege separation
-* dominance conditions
-* the unified CTN/CKN control problem
-* formal model and architecture considerations
-* scope of claims
+* `R` – privileged reasoning manifold (kernel space)
+* `D` – driver/interface operators mediating U ↔ R
+* `I` – architectural invariants that must be preserved in R
+* `Λ` – dominance parameters (internal dynamics dominate external perturbations)
+* `d` – bounded perturbation radius in R
+
+CKN says:
+
+* privileged computation **occurs in R**
+* user-space lives in **U = span(W_E)**
+* user-driven perturbations in R are **bounded** (`∥Π_R(h_{t+1} − h_t)∥ ≤ d`)
+* all U ↔ R interaction goes through `D` / `D†`
+* some privileged directions may be **internal-only** (representable in R but not in tokens)
+
+CKN **does not** say:
+
+* how R is implemented
+* how D is built
+* which invariants I are chosen
+* which ring structure is “best”
+
+It’s **the mathematical root of trust**, not the OS you build on top.
 
 ---
 
-# 𝒦⊗ Philosophy
+## 𝒦⊗ What CKN Is Not
 
-CTN and CKN share a core ethos:
+CKN is **not**:
 
-> **LLMs already contain a vast geometric world.
-> CTN and CKN give us better tools to explore its structure.**
+* ❌ a new architecture
+* ❌ a training method
+* ❌ a safety mechanism
+* ❌ an exploit or jailbreak vector
+* ❌ a way to bypass RLHF or policy
+* ❌ a way to change what the model is “willing” to do
+* ❌ a guarantee of factuality or alignment
 
-CKN is not about adding mechanisms.
-It’s about naming and structuring geometry that was always there.
+CKN:
 
-Reasoning is a path in latent space.
-Privilege is a choice of subspace.
+* **does not** modify weights at inference
+* **does not** add new operations to the model
+* **does not** give users any capabilities they don’t already have
+
+It’s a **language for builders**, not a trick for users.
 
 ---
 
-# 𝒦⊗ Citation
+## 𝒦⊗ Relationship to CTN (𝒯⊗)
+
+CTN and CKN are **two geometric control surfaces** on the same system:
+
+| Aspect          | CTN (𝒯⊗) – Cognitive Tensor Networks | CKN (𝒦⊗) – Cognitive Kernel Networks |
+| --------------- | ------------------------------------- | ------------------------------------- |
+| Layer           | Input / prefix (user space)           | Architecture / latent (kernel space)  |
+| Space           | `U = span(W_E)`                       | `R ⊂ ℋ, R ∉ U`                        |
+| Mechanism       | Structured constraints in context     | Algebraic unreachability              |
+| Enforced by     | Model’s emergent interpretation       | Builder’s construction                |
+| Builder control | Prompt format, kernel design          | Dimensionality, `W_E`, `W_U`, Θ       |
+| Scope           | Stabilize trajectories in U           | Protect computation in R              |
+
+**CTN:**
+
+* gives the model a **well-specified environment** to think in
+* reduces under-specification and drift in user-space
+* is purely a **prompting protocol**
+
+**CKN:**
+
+* defines where trusted reasoning is allowed to happen
+* prevents user tokens from deforming privileged reasoning
+* is a **latent-space spec**, not a prompt technique
+
+They are independent but complementary:
+
+* CTN is useful even without CKN (better prompts)
+* CKN is useful even without CTN (latent privilege separation)
+* Together they provide a **full story**:
+
+  * shape the path (CTN)
+  * shape the space (CKN)
+
+---
+
+## 𝒦⊗ Safety and Alignment Disclaimer
+
+CKN:
+
+* does **not** bypass model safety or RLHF
+* does **not** override policy constraints
+* does **not** allow users to reach anything they couldn’t reach via tokens before
+
+CKN changes **architecture-level reasoning geometry**, not the surface API.
+
+Safety remains:
+
+* whatever alignment / policy / guardrails the builder has applied
+* enforced at the same boundaries as before
+
+CKN’s contribution is simply:
+
+> to give model builders a precise way to talk about, and eventually enforce, **where** trusted reasoning happens.
+
+---
+
+## 𝒦⊗ Status
+
+CKN is currently:
+
+* **a formal specification and research direction**
+* mathematically grounded in linear algebra and dynamical systems
+* compatible with existing transformer-style architectures
+* designed to be architecture-agnostic
+
+What does **not** exist yet:
+
+* a full CKN-compliant implementation
+* empirical benchmarks for CKN-style architectures
+
+Those are **future work**, not part of this repo.
+
+---
+
+## 𝒦⊗ Whitepaper
+
+For a full formal treatment, see:
+
+* **CKN Whitepaper v1.0.1 (PDF)** – `docs/CKN_Whitepaper_v1.1.0.pdf`
+
+  * motivation and problem framing
+  * builder control and algebraic root trust
+  * kernel/user geometry and driver operators
+  * nullspace and column-span theorems
+  * bounded perturbation and stability
+  * specification vs. implementation
+  * relationship to CTN
+
+---
+
+## 𝒦⊗ Citation
 
 ```bibtex
 @misc{alioto2025ckn,
-  title        = {Cognitive Kernel Networks: Architectural Geometry for Privileged Reasoning in Transformers},
+  title        = {Cognitive Kernel Networks: Root Trust for Privilege-Separated Reasoning in Latent Space},
   author       = {Alioto, John P.},
   year         = {2025},
-  note         = {Protocol v0.2.0},
-  howpublished = {\url{https://github.com/jpalioto/ckn_core}}
+  howpublished = {\url{https://github.com/jpalioto/ckn_core}},
+  note         = {Protocol v1.0.1}
 }
 ```
 
 ---
 
-# 𝒦⊗ Contributing
+## 𝒦⊗ Contributing
 
-CKN is intentionally open-ended.
-We welcome:
+CKN is intentionally open. Useful contributions include:
 
-* critiques
-* mathematical refinements
-* experiments
-* architectural proposals
-* representation-engineering tools
-* interpretability studies
+* critiques of the specification
+* mathematical refinements (e.g. stronger theorems, tighter bounds)
+* experiments on:
 
-CKN is a **shared language**, not a finished system.
+  * CTN-style prompting and latent geometry
+  * activation steering toward privileged directions
+  * toy CKN-style wrappers for open models
+* architectural proposals for models that approximately satisfy the CKN axioms
+* interpretability work on internal-only directions
+
+If you’re building or analyzing systems and want to reason about **privilege in concept space**, this repo is for you.
 
 ---
 
-# 𝒦⊗ License & Trademarks
+## 𝒦⊗ License & Trademarks
 
-MIT License — open for research and commercial use.
-
-© 2025 John P. Alioto.
-Cognitive Tensor Networks™, CTN™, CKN™, 𝒯⊗, and 𝒦⊗ are trademarks of John P. Alioto.
-The Tensor-T logos (𝒯⊗, 𝒯⊗₀, 𝒦⊗) are copyrighted graphical works.
+* MIT License — free for research and commercial use.
+* © 2025 John P. Alioto.
+* Cognitive Tensor Networks™, Cognitive Kernel Networks™, CTN™, CKN™, 𝒯⊗, and 𝒦⊗ are trademarks of John P. Alioto.
+* Tensor logos (𝒯⊗, 𝒯⊗₀, 𝒦⊗) are copyrighted graphical works.
