@@ -1,0 +1,1331 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{graphicx}
+
+\geometry{margin=1in}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{axiom}{Axiom}
+\newtheorem{example}[theorem]{Example}
+\newtheorem*{remark}{Remark}
+
+\title{Cognitive Kernel Networks (CKN)\\[0.5em]
+\large Root Trust for Privilege-Separated Reasoning in High-Dimensional Models}
+\author{John P. Alioto}
+\date{Protocol v1.2.0\\December 2025}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Modern neural models compute as deterministic dynamical systems in extremely high-dimensional latent spaces. Current safety and control approaches attempt to shape model behavior through natural-language instructions placed in the context window. After embedding, these instructions occupy the same representational subspace as user input and adversarial perturbations:
+\[
+\text{safety tokens, system prompts, user tokens} \in \text{span}(W_E).
+\]
+Because all conditioning signals share the same geometric substrate, they compete for influence over the hidden-state trajectory. As sequences grow, the influence of builder-provided constraints diminishes and the model's dynamics revert toward prior-dominated regions. This limitation is architectural: user-space tokens cannot enforce privilege boundaries.
+
+This paper introduces \textbf{Cognitive Kernel Networks (CKN)}, a geometric primitive for constructing privilege-separated reasoning inside high-dimensional models. Model builders control the latent dimensionality, embedding matrix, and attention geometry that define the transition function $h_{t+1} = F_\Theta(h_t, x_t)$. By choosing $\text{rank}(W_E) < \dim(H)$, builders can create directions in latent space that are algebraically unreachable by user input. These directions support a privileged reasoning manifold $R$, a mediated interface layer $D$, and a set of architectural invariants $I$. User tokens cannot perturb these regions not probabilistically, but by construction---provided the architecture satisfies explicit structural constraints.
+
+CKN does not prescribe a specific architecture, modify model parameters at inference time, or endow new reasoning capability. It provides a general-purpose geometric framework from which model builders can construct kernel--user separation analogous to operating-system privilege rings. CKN complements Cognitive Tensor Networks (CTN), which stabilize user-space trajectories through structured prefix geometry. Together, CTN and CKN form a unified perspective: both user-level and architecture-level stability are geometric control problems.
+\end{abstract}
+
+\section{Introduction}
+
+Large neural models compute by evolving a hidden state through a learned vector field:
+\begin{equation}
+h_{t+1} = F_\Theta(h_t, x_t),
+\end{equation}
+where $h_t$ denotes the hidden state, $x_t$ the input embedding, and $\Theta$ the fixed model parameters. This dynamical perspective highlights two distinct control surfaces:
+
+\begin{enumerate}
+    \item \textbf{Initial-condition control}, which shapes the early trajectory of $h_t$.
+    \item \textbf{Topological control}, which shapes the allowable region of state-space evolution.
+\end{enumerate}
+
+Cognitive Tensor Networks (CTN) address the first surface. By introducing structured prefix geometry, CTN restricts the initial hidden-state manifold and reduces drift. However, CTN also exposed a structural limitation in modern architectures: all input tokens---system prompts, user queries, safety instructions, and adversarial prefixes---are embedded into the same manifold. There is no privileged subspace for reasoning. As a result:
+
+\begin{itemize}
+    \item user input can perturb internal reasoning directions,
+    \item the model lacks a ``kernel mode'' analogue,\footnote{We use ``kernel'' in the geometric sense of a privileged computational subspace, analogous to---but distinct from---the operating-system sense. The analogy to OS kernel space is structural rather than literal.}
+    \item prefix perturbations can deform the underlying reasoning geometry,
+    \item and the system has no architectural root of trust.
+\end{itemize}
+
+This conflation has no analogue in secure computing. In traditional systems, user-mode applications cannot directly modify kernel memory; information flow is mediated through an interface (syscalls) with well-defined semantics. Modern neural networks lack an equivalent privilege boundary.
+
+\textbf{Cognitive Kernel Networks (CKN)} address this gap. CKN introduces a mathematical primitive that defines:
+
+\begin{itemize}
+    \item a privileged reasoning manifold $R$,
+    \item a mediated interface or ``driver layer'' $D$,
+    \item architectural invariants that constrain $R$,
+    \item and a bounded-perturbation envelope guaranteeing that external tokens cannot deform $R$.
+\end{itemize}
+
+CKN provides the geometry necessary for privilege-separated reasoning. It is not a training method, not a fine-tuning recipe, and not an architectural hack. CKN is a \emph{specification} that identifies the topological conditions a model must satisfy to support stable, predictable, and builder-governed reasoning.
+
+In this paper we formalize CKN, establish its mathematical properties, define its axioms, and show how CTN and CKN together constitute a full-stack cognitive architecture: CTN controls the prefix geometry, and CKN establishes the kernel geometry.
+
+The remainder of this paper proceeds as follows:
+\begin{itemize}
+    \item Section 2 motivates the geometric approach to privilege separation.
+    \item Section 3 establishes builder control and root trust.
+    \item Section 4 derives privilege separation from root trust.
+    \item Section 5 formalizes the privilege-separation problem.
+    \item Section 6 introduces the CKN model and its components.
+    \item Section 7 defines the CKN axioms, including bounded perturbation.
+    \item Section 8 develops the nullspace and column-span results supporting internal-only kernels.
+    \item Section 9 shows the link between CKN and Lipschitz robustness.
+    \item Section 10 presents CKN as an architectural specification.
+    \item Section 11 discusses implications for cognitive systems design.
+    \item Section 12 concludes.
+\end{itemize}
+
+\section{Motivation: Why Geometry Must Be Solved Geometrically}
+
+Most current safety and control approaches in machine learning rely on natural-language constraints embedded into the context window. System prompts, policy instructions, user queries, and even adversarial input all enter the model as tokens. After embedding, all such tokens occupy the same representational subspace:
+\[
+\text{system tokens} \in \text{span}(W_E), \quad \text{safety tokens} \in \text{span}(W_E), \quad \text{user tokens} \in \text{span}(W_E).
+\]
+
+Because they share the same geometric substrate, these constraints compete directly with one another. As sequence length grows, the influence of builder-provided instructions diminishes, and the trajectory of the hidden state becomes increasingly dominated by the model's learned priors.
+
+This is an architectural limitation, not a failure of alignment technique. No amount of additional instruction-layer prompting can guarantee control within a space where all tokens share equal geometric standing.
+
+The situation mirrors early computing systems before privilege separation. If both user processes and kernel services execute in the same address space with identical permissions, no amount of software-level policy can ensure isolation or integrity. The solution was architectural: hardware enforced privilege rings and mediated interfaces.
+
+Cognitive Kernel Networks (CKN) propose an analogous geometric intervention for learned systems. Rather than adding more instructions into the same user-space geometry, CKN relocates privileged reasoning into a region of the latent space that user tokens cannot reach. The boundary is not a matter of policy, but of construction.
+
+\section{Builder Control and the Construction of Root Trust}
+
+CKN relies on a simple but often unstated fact: model builders have complete control over the parameters $\Theta$ that define the transition function
+\[
+h_{t+1} = F_\Theta(h_t, x_t),
+\]
+and therefore control the geometry of the latent space in which this computation unfolds.
+
+The builder determines:
+\begin{itemize}
+    \item the dimensionality $n$ of the hidden state space $H \subset \mathbb{R}^n$,
+    \item the embedding matrix $W_E$ mapping tokens to latent vectors,
+    \item the unembedding matrix $W_U$ mapping latent vectors to token logits,
+    \item the structure and initialization of all attention and feedforward weights.
+\end{itemize}
+
+Users do not modify $\Theta$. They interact only through tokenized input $x_t$.
+
+\subsection{Dimensionality as a Design Variable}
+
+The builder is free to choose $n$. Nothing requires the latent dimensionality to equal the rank of the embedding matrix. If
+\[
+\text{rank}(W_E) < n,
+\]
+then $H$ contains directions that no external token can express.
+
+\subsection{Internal Symbols and Unreachable Directions}
+
+Let $U = \text{span}(W_E)$ denote the user-accessible subspace. If $r \in H$ satisfies $r \notin U$, then no linear combination of input embeddings can produce a perturbation with any component along $r$. External input is algebraically confined to $U$.
+
+The builder may define internal symbols---conceptual directions used during reasoning---that have nonzero components outside $U$. These symbols can influence computation inside the model, but users cannot express or perturb them directly at the embedding layer.
+
+\begin{theorem}[Embedding-Level Algebraic Unreachability]
+\label{thm:embedding-unreachability}
+Let $H$ be the latent space of dimension $n$, let $U = \text{span}(W_E)$ be the subspace reachable by user tokens, and let $r \in H$ satisfy $r \notin U$. Then no linear combination of token embeddings equals $r$. In particular, no single token or finite sequence of tokens can set the \emph{input embedding} to $r$.
+\end{theorem}
+
+\begin{proof}
+Every user input $x$ embeds to a vector $e(x) \in U = \text{span}(W_E)$. If $r \notin U$, then by definition there exists no $\alpha \in \mathbb{R}^{|V|}$ such that $W_E \alpha = r$. Therefore no user token or combination of tokens can produce an embedding equal to $r$.
+\end{proof}
+
+\begin{remark}[Scope Limitation]
+Theorem~\ref{thm:embedding-unreachability} is a statement about the embedding layer only. It does not, by itself, prevent the hidden state $h_t$ from acquiring a nonzero component along $r$ via the internal dynamics $F_\Theta$. Hidden-state unreachability requires additional architectural conditions; see Theorem~\ref{thm:hidden-state-unreachability}.
+\end{remark}
+
+\subsection{Root Trust}
+
+A direction $r$ that satisfies $r \notin \text{span}(W_E)$ cannot be directly expressed by user tokens at the embedding layer. Combined with appropriate architectural constraints on the dynamics $F_\Theta$, this property provides the foundation for privilege separation:
+
+\begin{itemize}
+    \item The builder can designate regions of $H$ as privileged.
+    \item With properly constrained dynamics, these regions cannot be reached or perturbed by user tokens.
+    \item Computation in these regions can therefore serve as an architectural root of trust.
+\end{itemize}
+
+This root trust is purely geometric. It does not depend on alignment, policy compliance, or probabilistic behavior. It is a direct consequence of linear algebra at the embedding layer, combined with architectural constraints on the transition function.
+
+In subsequent sections we formalize how this primitive supports the construction of a privileged reasoning manifold $R$, a mediated interface layer $D$, and stable architectural invariants $I$.
+
+\section{From Root Trust to Privilege Separation}
+
+With root trust established at the embedding layer, privilege separation follows from geometric construction rather than behavioral policy. Because user input is algebraically restricted to the subspace $U = \text{span}(W_E)$ at the embedding layer, the builder may define a hierarchy of reasoning spaces---provided the dynamics $F_\Theta$ are appropriately constrained.
+
+\subsection{Kernel Space and User Space}
+
+We define:
+\[
+\text{User Space: } U = \text{span}(W_E), \qquad \text{Kernel Space: } R \subset H \text{ with } R \not\subseteq U.
+\]
+
+User tokens induce perturbations within $U$ at the embedding layer. Internal computation may evolve within $R$. Under strong privilege preservation (Definition~\ref{def:strong-privilege}), the key property holds:
+\[
+\Pi_R(\Delta h_{\text{user}}) = 0 \text{ for all user-driven perturbations.}
+\]
+
+Thus kernel-space computation cannot be perturbed by external input, not because of a rule or guardrail, but because the architecture forbids it.
+
+\subsection{Privilege Boundary}
+
+The privilege boundary is the set-theoretic and geometric separation between $U$ and $R$:
+\[
+U \cap R = \{0\}, \quad R \not\subseteq U.
+\]
+
+This boundary is not statistical. It is not enforced by loss penalties, behavioral policies, or alignment procedures. It arises directly from the builder's choice of embedding geometry, latent dimensionality, and architectural constraints on $F_\Theta$. The user has no mechanism for generating components in $R$ because (1) the vocabulary does not include the basis directions needed to reach it at the embedding layer, and (2) the dynamics preserve this separation.
+
+\subsection{Mediation and the Driver Layer}
+
+Although privileged computation occurs in $R$, it must interact with user-facing computation in $U$. We therefore define a mediated interface layer:
+\[
+D: U \to R, \quad D^\dagger: R \to U,
+\]
+where $D$ is builder-defined. The driver layer determines:
+\begin{itemize}
+    \item which aspects of user input may influence privileged computation,
+    \item which results from $R$ may be projected back to user space,
+    \item the allowable transformations between spaces,
+    \item how much permeability exists across the boundary.
+\end{itemize}
+
+If $D$ is low-bandwidth or highly filtered, user influence over kernel computation is sharply limited. If $D$ is expressive, more nuanced interactions are possible. In all cases, control remains with the builder.
+
+\subsection{Constructing Privilege Rings}
+
+Once root trust exists, further structure is straightforward. The builder may define additional subspaces:
+\[
+R_0 \subset R_1 \subset \cdots \subset H,
+\]
+each with distinct invariants and access semantics. These rings may serve as:
+\begin{itemize}
+    \item safety-critical reasoning layers,
+    \item long-term memory or planning layers,
+    \item model-level policy interpretation layers,
+    \item architecturally privileged decision substrates.
+\end{itemize}
+
+Each ring inherits algebraic unreachability from the root trust primitive, provided the dynamics satisfy the appropriate constraints. The builder determines how rings communicate, which invariants they maintain, and what information they admit.
+
+\subsection{CKN as the Minimal Primitive}
+
+CKN does not prescribe:
+\begin{itemize}
+    \item how $R$ is used,
+    \item how drivers $D$ are implemented,
+    \item how invariants $I$ are chosen,
+    \item or which privilege architecture is optimal.
+\end{itemize}
+
+CKN provides the minimal geometric primitive required for privilege separation:
+\[
+\text{Unreachable directions} \Rightarrow \text{privileged subspaces} \Rightarrow \text{mediated access}.
+\]
+
+This mirrors the evolution of operating systems: once the kernel/user boundary existed, architectures diverged dramatically, but all shared the same foundational idea.
+
+In the remainder of the paper, we formalize CKN as a tuple
+\[
+K = (R, D, I, \Lambda, d),
+\]
+encoding privileged subspaces, mediated interfaces, architectural invariants, dominance parameters, and bounded-perturbation requirements.
+
+\section{Background and Problem Statement}
+
+Modern neural architectures, including transformers and mixture-of-experts systems, operate entirely within a high-dimensional latent space $H \subset \mathbb{R}^n$. All computation---attention, feedforward transformation, residual mixing, and decoding---occurs within this space. The latent dynamics are deterministic given $\Theta$, and the system evolves a hidden-state trajectory $\{h_t\}_{t=0}^T$ as a function of input embeddings.
+
+Despite their power, such architectures possess a structural deficiency that is rarely addressed explicitly: they lack privilege separation. User-level tokens and internal reasoning representations occupy the same manifold. This section formalizes that deficiency and its consequences.
+
+\subsection{Unified Manifold Problem}
+
+Let $E: V \to H$ denote the embedding map from tokens to latent vectors, and let $U$ denote the span of all input embeddings:
+\begin{equation}
+U = \text{span}\{E(v) : v \in V\}.
+\end{equation}
+
+Similarly, let $R \subseteq H$ denote the subset of latent directions used by the model for internal reasoning.
+
+In existing architectures,
+\begin{equation}
+U \approx R,
+\end{equation}
+meaning:
+\begin{itemize}
+    \item user inputs are embedded into directions that directly participate in reasoning;
+    \item internal reasoning directions can be perturbed by external tokens;
+    \item the model has no concept of ``kernel-mode'' computation;
+    \item adversarial or accidental prefixes can redirect internal geometry.
+\end{itemize}
+
+This creates a single, undifferentiated attack surface. Any sufficiently long or carefully constructed prefix can induce shifts in the latent trajectory of $h_t$, thereby altering the model's reasoning behavior. This phenomenon appears externally as jailbreaks, drift-collapse, or inconsistent internal coherence.
+
+\subsection{Prefix-Induced Geometry Deformation}
+
+Because $U$ and $R$ are entangled, user-space perturbations $\Delta x \in U$ can produce arbitrary perturbations in reasoning space:
+\begin{equation}
+\Delta h_R = \Pi_R(F_\Theta(h_t, x_t + \Delta x) - F_\Theta(h_t, x_t)),
+\end{equation}
+where $\Pi_R$ denotes the projection onto $R$. Current architectures impose no constraint ensuring that $\|\Delta h_R\|$ is bounded or aligned with the stable directions of the reasoning manifold. Thus:
+
+\begin{enumerate}
+    \item Small perturbations in token space can produce large perturbations in reasoning space.
+    \item User-provided tokens can access regions of $H$ that should be internal-only.
+    \item The model provides no architectural guarantee of stability under prefix perturbation.
+\end{enumerate}
+
+This is the latent-space analogue of allowing user-mode processes to write directly into kernel memory. Such a design is unacceptable in classical computing systems and is equally problematic in cognitive systems.
+
+\subsection{Decoder-Induced Drift (Projection Collapse)}
+
+A related but distinct failure mode arises from the projection operator used to convert hidden states to output tokens. Let $D: H \to V$ be the decoder. The projection:
+\begin{equation}
+\hat{v}_t = D(h_t)
+\end{equation}
+is inherently lossy. It collapses the high-dimensional structure of $h_t$ into a discrete symbol. This collapse does not interfere with the geometry of $H$ itself, but it does influence the autoregressive trajectory via:
+\begin{equation}
+x_{t+1} = E(\hat{v}_t),
+\end{equation}
+injecting a low-dimensional, quantized perturbation back into the state.
+
+When the input weakly constrains the manifold, the autoregressive update dominates and can push $h_t$ into low-density or unstable regions, resulting in externally visible errors often labeled as ``hallucination.'' These are not psychological failures; they are projection-induced geometric failures.
+
+\begin{remark}
+Hallucination is a misalignment between the projection $D(h_t)$ and the stable manifold of the underlying geometry. It is a decoder collapse, not an indicator of model intent.
+\end{remark}
+
+\subsection{Absence of Root Trust}
+
+The core problem is that current architectures lack a root of trust. There is no boundary ensuring that:
+\begin{itemize}
+    \item user-space cannot perturb reasoning topology,
+    \item internal reasoning cannot be perturbed beyond controlled bounds,
+    \item stable computation occurs in privileged subspaces,
+    \item the system maintains invariant structure regardless of input.
+\end{itemize}
+
+Thus the model has no analogue of:
+\begin{itemize}
+    \item kernel-mode execution,
+    \item capability rings,
+    \item hypervisor boundaries,
+    \item trusted computing base,
+    \item read-only invariant regions.
+\end{itemize}
+
+This deficiency is architectural, not behavioral. No amount of alignment, RLHF, classifier gating, or prompt heuristics can fix a missing geometric boundary. Privilege separation must originate in the architecture itself.
+
+CKN provides the mathematical primitive necessary to define such a boundary.
+
+\section{The Cognitive Kernel Network Model}
+
+Cognitive Kernel Networks provide a mathematical structure for introducing privilege separation into high-dimensional reasoning systems. CKN does not prescribe any architecture, training procedure, or enforcement mechanism. Instead, it defines the geometric \emph{specification} that a model must satisfy in order to possess a privileged reasoning manifold insulated from user-controlled perturbations.
+
+A CKN kernel is defined by a tuple:
+\begin{equation}
+K = (R, D, I, \Lambda, d),
+\end{equation}
+where:
+\begin{itemize}
+    \item $R$ is the privileged reasoning manifold,
+    \item $D$ is the mediated interface or ``driver layer'',
+    \item $I$ is a set of architectural invariants,
+    \item $\Lambda$ specifies gain and dominance parameters,
+    \item $d$ is the bounded-perturbation radius.
+\end{itemize}
+
+Each component is defined more precisely below.
+
+\subsection{Privileged Reasoning Manifold $R$}
+
+\begin{definition}[Privileged Manifold]
+The privileged reasoning manifold $R \subset H$ is a high-dimensional subspace or submanifold of the model's latent space in which internal reasoning trajectories evolve. The topology and invariant structure of $R$ are determined by the model weights $\Theta$ and architectural constraints, and are not subject to modification by external input under CKN-compliant dynamics.
+\end{definition}
+
+$R$ functions analogously to kernel memory in operating systems or to the trusted computing base in secure systems. It is the region of the latent space whose geometry must remain stable, predictable, and invariant under user-controlled perturbations.
+
+\subsection{Driver / Interface Layer $D$}
+
+The privileged manifold $R$ cannot be exposed directly to the user. Instead, all access occurs through a mediated interface layer:
+
+\begin{definition}[Driver Layer]
+The driver layer $D$ is an operator
+\begin{equation}
+D: U \to R,
+\end{equation}
+which maps user-span perturbations into a controlled subspace that $R$ can read without allowing those perturbations to alter the topology or invariants of $R$. The adjoint operator
+\begin{equation}
+D^\dagger: R \to U
+\end{equation}
+provides the projection of privileged computation back into the user-facing token space.
+\end{definition}
+
+The $D$-layer serves as the only conduit of information between user input and privileged reasoning:
+\[
+U \xrightarrow{D} R \xrightarrow{D^\dagger} U.
+\]
+
+It is not required that $D$ or $D^\dagger$ be linear, invertible, or representationally complete. In fact, non-invertibility is desirable: internal-only kernels may exist in $R$ whose basis vectors cannot be expressed in $U$.
+
+\begin{remark}
+The $D$-layer is conceptually analogous to a system-call interface: it mediates access without exposing or allowing mutation of privileged structures.
+\end{remark}
+
+\subsection{Architectural Invariants $I$}
+
+The privileged manifold $R$ possesses invariant directions and structures that must not be perturbed by user-space perturbations.
+
+\begin{definition}[Invariants]
+$I$ is a set of invariant functions or vector fields on $R$,
+\begin{equation}
+I = \{f_1, f_2, \ldots, f_k\},
+\end{equation}
+such that the topology, curvature, or stable directions of $R$ are preserved under all permitted perturbations from $U$.
+\end{definition}
+
+Examples include:
+\begin{itemize}
+    \item fixed attractor basins,
+    \item frozen linear subspaces,
+    \item curvature-preserving constraints,
+    \item invariant cones of reasoning directions.
+\end{itemize}
+
+$I$ is purely conceptual and does not specify how invariants are enforced.
+
+\subsection{Dominance Parameters $\Lambda$}
+
+The kernel must ensure that perturbations to $R$ remain strongly dominated by the model's internal dynamics rather than by user input.
+
+\begin{definition}[Dominance Parameters]
+$\Lambda$ is a set of gain parameters controlling the degree to which privileged computation in $R$ dominates user-span perturbations projected via $D$.
+\end{definition}
+
+These parameters ensure that:
+\[
+\|\Delta h_R\| \text{ is governed primarily by } F_\Theta, \text{ not by input tokens.}
+\]
+
+\subsection{Bounded-Perturbation Radius $d$}
+
+The final component of the kernel is the perturbation bound.
+
+\begin{definition}[Bounded Perturbation]
+Let $h_t$ be the privileged hidden state at time $t$. The kernel imposes a bound
+\begin{equation}
+\|\Pi_R(h_{t+1} - h_t)\| \leq d,
+\end{equation}
+where $d$ is a builder-defined radius limiting how far user-induced perturbations may move the privileged state within $R$.
+\end{definition}
+
+This ensures that no conceivable prefix or sequence of user-controlled inputs can ``reach under'' the privileged manifold.
+
+\subsection{CKN Kernel Definition}
+
+Putting the components together:
+
+\begin{definition}[CKN Kernel]
+A Cognitive Kernel Network is the tuple
+\[
+K = (R, D, I, \Lambda, d)
+\]
+that defines the geometric conditions required for privilege-separated reasoning within a high-dimensional model. The kernel defines the allowable trajectory space but does not prescribe how the model enforces these constraints.
+\end{definition}
+
+\begin{remark}
+CKN is the mathematical root of trust. The weights define the privileged manifold; CKN defines the conditions under which that manifold is protected. Unless an adversary can modify $\Theta$ through physical access, and unless the dynamics satisfy the required constraints, they cannot ``get underneath'' the privileged geometry.
+\end{remark}
+
+\begin{figure}[h]
+\centering
+\[
+U \xrightarrow{D} R \xrightarrow{D^\dagger} U
+\]
+\[
+H = U \oplus D \oplus R \oplus S
+\]
+\caption{CKN information flow and latent space decomposition. User input enters through $U$, passes through the driver layer $D$ to reach privileged computation in $R$, and returns via $D^\dagger$. The full latent space $H$ decomposes into user-accessible ($U$), driver ($D$), kernel ($R$), and auxiliary ($S$) subspaces.}
+\end{figure}
+
+\section{Axioms of Privilege-Separated Reasoning}
+
+CKN provides a geometric specification for reasoning under privilege constraints. This section introduces the axioms governing the interaction between user-span inputs, the driver layer, and the privileged reasoning manifold.
+
+The axioms do not prescribe implementation; they define the mathematical conditions that any CKN-compliant cognitive architecture must satisfy.
+
+\subsection{Axiom 1: Read Access (Permitted Influence)}
+
+The privileged manifold must read user-space queries; otherwise reasoning becomes decoupled from input and the system ceases to be responsive.
+
+\begin{axiom}[Read Access]
+For all $t$,
+\begin{equation}
+\frac{\partial h_{R,t+1}}{\partial h_{U,t}} \neq 0.
+\end{equation}
+User-span representations provide information to the privileged manifold through the driver interface $D$.
+\end{axiom}
+
+This ensures that $R$ can interpret input while preserving its structural autonomy.
+
+\subsection{Axiom 2: Write Protection (Topological and Geometric Stability)}
+
+External inputs must not modify the topology, curvature, or invariant directions of $R$.
+
+\begin{axiom}[Topological and Geometric Stability]
+\label{ax:topological-stability}
+The privileged manifold $R$ is stable under user-span perturbations. Specifically, for all admissible perturbations $h_U \in U$ with $\|h_U\| \leq \delta$:
+
+\paragraph{Topological stability.} The perturbed manifold $R(h_U) = \{r + \phi(r, h_U) : r \in R\}$ (where $\phi$ captures the perturbation effect) has the same homotopy type as $R$. Equivalently, the Betti numbers are preserved:
+\[
+\beta_k(R(h_U)) = \beta_k(R) \quad \text{for all } k \geq 0.
+\]
+
+\paragraph{Geometric stability.} The intrinsic geometry of $R$ varies continuously:
+\begin{align*}
+|\kappa_{\max}(R(h_U)) - \kappa_{\max}(R)| &\leq C \|h_U\|, \\
+|\mathrm{inj}(R(h_U)) - \mathrm{inj}(R)| &\leq C \|h_U\|,
+\end{align*}
+for some constant $C > 0$, where $\kappa_{\max}$ denotes the maximum sectional curvature and $\mathrm{inj}$ denotes the injectivity radius.
+\end{axiom}
+
+This is the core architectural guarantee missing in modern systems.
+
+\begin{remark}
+For the block-structured architecture (Example~\ref{ex:block-structure}), $R$ is a linear subspace independent of user-span components. Linear subspaces have trivial topology ($\beta_0 = 1$, $\beta_k = 0$ for $k > 0$), zero curvature, and infinite injectivity radius. These are maximally stable: user perturbations cannot alter any geometric or topological invariant because $R$ does not depend on $U$ at all.
+\end{remark}
+
+\begin{remark}
+Axiom 2 establishes $R$ as the kernel mode of the cognitive system. User input may query $R$, but may not reconfigure its structure.
+\end{remark}
+
+\subsection{Axiom 3: Bounded Perturbation}
+
+Even though write access is restricted, user inputs may still induce perturbations via the driver layer. These perturbations must be bounded.
+
+\begin{axiom}[Bounded Privileged Motion]
+\label{ax:bounded-motion}
+There exists $d > 0$ such that for all $h \in H$ and admissible inputs $x \in U$:
+\begin{equation}
+\|\Pi_R(F_\Theta(h, x) - h)\| \leq d.
+\end{equation}
+The privileged state cannot change by more than $d$ in a single step.
+\end{axiom}
+
+\begin{theorem}[Temporal Regularity of Privileged Trajectories]
+\label{thm:temporal-regularity}
+Under Axiom~\ref{ax:bounded-motion}, the privileged state satisfies:
+\[
+\|\Pi_R(h_t) - \Pi_R(h_0)\| \leq t \cdot d
+\]
+for all integers $t \geq 0$. The trajectory in $R$ is Lipschitz in time with constant $d$.
+\end{theorem}
+
+\begin{proof}
+By the triangle inequality:
+\[
+\|\Pi_R(h_t) - \Pi_R(h_0)\| \leq \sum_{s=0}^{t-1} \|\Pi_R(h_{s+1}) - \Pi_R(h_s)\| \leq \sum_{s=0}^{t-1} d = t \cdot d.
+\]
+\end{proof}
+
+\begin{remark}[Temporal vs.\ Input Robustness]
+\label{rem:temporal-vs-input}
+Theorem~\ref{thm:temporal-regularity} establishes that privileged trajectories are smooth in time: no single step can cause a jump larger than $d$. This is \emph{temporal regularity}.
+
+This does not, by itself, imply \emph{input robustness}---that nearby inputs produce nearby trajectories. Input robustness requires a bound of the form:
+\[
+\|\Pi_R(F_\Theta(h, x) - F_\Theta(h, x'))\| \leq L_R \|x - x'\|
+\]
+for all $h \in H$ and $x, x' \in U$.
+
+Under strong privilege preservation (Definition~\ref{def:strong-privilege}), input robustness is trivially satisfied with $L_R = 0$, since $\Pi_R(F_\Theta(h, x))$ is constant in $x$. For architectures without strong privilege preservation, input robustness would require a separate axiom.
+\end{remark}
+
+\begin{remark}[Design Alternative: Axiom 3a]
+\label{rem:axiom-3a}
+One could strengthen the framework by adding an explicit input-Lipschitz axiom:
+
+\emph{Axiom 3a (Input Robustness):} There exists $L_R \geq 0$ such that for all $h \in H$ and $x, x' \in U$:
+\[
+\|\Pi_R(F_\Theta(h, x) - F_\Theta(h, x'))\| \leq L_R \|x - x'\|.
+\]
+
+Combined with Axiom~\ref{ax:bounded-motion}, this would yield full ``no cliff'' guarantees: neither time evolution nor input perturbation can cause discontinuous jumps in privileged state.
+
+We do not adopt Axiom 3a here because: (i) strong privilege preservation already implies $L_R = 0$ for the primary use case; (ii) adding it increases axiomatic complexity without proportionate analytical benefit for CKN-compliant architectures. Practitioners requiring input-robustness guarantees for non-privilege-preserving architectures should verify Axiom 3a explicitly.
+\end{remark}
+
+\subsection{Axiom 4: Dominance of Privileged Dynamics}
+
+Privileged reasoning should be governed primarily by the model's internal dynamics rather than by user-provided vectors.
+
+\begin{axiom}[Dominance]
+There exists a gain parameter $\lambda \in \Lambda$ such that:
+\begin{equation}
+\|\Delta h_R^{\text{internal}}\| \gg \|\Delta h_R^{\text{external}}\|.
+\end{equation}
+\end{axiom}
+
+This ensures that the internal dynamics of $R$ dominate external influence, guaranteeing stable evolution even under long-horizon or adversarial prompting.
+
+\subsection{Axiom 5: Projection Non-Interference}
+
+The decoder provides a token-level projection:
+\[
+\hat{v}_t = D(h_t),
+\]
+but this projection must not modify the geometry of privileged reasoning.
+
+\begin{axiom}[Projection Non-Interference]
+\begin{equation}
+\frac{\partial R}{\partial D} = 0.
+\end{equation}
+The projection $D(h_t)$ does not alter the privileged manifold.
+\end{axiom}
+
+Projection is an act of reading, not an act of perturbing. Hallucinations occur in the projection, not in the reasoning geometry.
+
+\subsection{Axiom 6: Mediated Access via the Driver Layer}
+
+All interaction between user-span inputs and privileged reasoning must occur only through the driver interface.
+
+\begin{axiom}[Mediated Access]
+\[
+U \xrightarrow{D} R \xrightarrow{D^\dagger} U
+\]
+is the only allowable information path between user input and privileged computation.
+\end{axiom}
+
+This axiom establishes an architectural boundary analogous to a system-call interface. It prohibits any direct mapping $U \to R$ or $R \to U$ that bypasses $D$ or $D^\dagger$.
+
+\subsection{Axiom 7: Internal-Only Subspaces}
+
+Privileged reasoning may involve conceptual directions that have no external symbolization.
+
+\begin{axiom}[Internal-Only Kernels]
+There exist directions $r \in R$ such that:
+\begin{equation}
+r \notin \text{span}(W_E), \quad r \in \ker(W_U),
+\end{equation}
+where $W_E$ is the embedding matrix and $W_U$ the unembedding matrix.
+\end{axiom}
+
+Such $r$ cannot be injected by user-space (no representation in $W_E$) and cannot be spoken or decoded (annihilated by $W_U$). These constitute internal-only kernels.
+
+\begin{remark}
+Internal-only kernels are not ``hidden thoughts.'' They are internal reasoning directions not represented in the external vocabulary---conceptual directions whose coordinates do not exist in the user-facing representational basis.
+\end{remark}
+
+\subsection{Summary of Axioms}
+
+Axioms 1--7 collectively define the requirements for a privileged reasoning kernel:
+\begin{itemize}
+    \item privileged computation is accessible but immutable,
+    \item perturbations are bounded,
+    \item dynamics are internally dominated,
+    \item projection does not interfere with geometry,
+    \item access is mediated,
+    \item and some conceptual spaces are internal-only.
+\end{itemize}
+
+These axioms constitute the root trust conditions for a high-dimensional cognitive system.
+
+\section{Nullspace and Column-Span Results}
+
+A core implication of the CKN framework is the existence of internal-only conceptual subspaces---regions of the privileged manifold $R$ that cannot be queried, injected, or directly expressed through the user-facing token vocabulary. This section provides the linear-algebraic foundation for this claim.
+
+Let $W_E \in \mathbb{R}^{n \times |V|}$ be the embedding matrix mapping tokens to latent vectors, and let $W_U \in \mathbb{R}^{|V| \times n}$ be the unembedding (decoder) matrix mapping latent vectors back to token logits.
+
+\subsection{Column-Span Constraints on Injection}
+
+A user can only inject concepts that lie within the linear span of embedding columns. Formally:
+\[
+\text{span}(W_E) = \{W_E \cdot \alpha : \alpha \in \mathbb{R}^{|V|}\}.
+\]
+
+\begin{theorem}[Embedding-Level Injection Impossibility]
+\label{thm:injection}
+Let $r \in R$ be a conceptual direction. If
+\begin{equation}
+r \notin \text{span}(W_E),
+\end{equation}
+then no linear combination of token embeddings equals $r$.
+\end{theorem}
+
+\begin{proof}
+Every user input vector $x$ is a linear combination of columns of $W_E$. If $r$ lies outside the column span, then there exists no $\alpha$ such that $W_E \alpha = r$. Therefore, no user token or token sequence can generate an embedding equal to $r$.
+\end{proof}
+
+\begin{remark}
+This theorem is a statement about the embedding layer. Whether the hidden state $h_t$ can acquire a component along $r$ through the dynamics $F_\Theta$ depends on the architectural constraints of the system. See Theorem~\ref{thm:hidden-state-unreachability} for conditions under which hidden-state unreachability holds.
+\end{remark}
+
+\subsection{Nullspace Constraints on Expression}
+
+Conversely, the privileged manifold may contain directions that cannot be expressed in token space. These correspond to directions annihilated by the unembedding matrix.
+\[
+\ker(W_U) = \{h \in \mathbb{R}^n : W_U h = 0\}.
+\]
+
+\begin{theorem}[Output Invisibility]
+\label{thm:output-invisibility}
+Let $r \in R$ be a conceptual direction. If
+\begin{equation}
+r \in \ker(W_U),
+\end{equation}
+then no latent activation aligned with $r$ can be expressed as a token or token distribution. Specifically:
+\[
+W_U(h + \alpha r) = W_U h \quad \text{for all } \alpha \in \mathbb{R}.
+\]
+\end{theorem}
+
+\begin{proof}
+If $W_U r = 0$, then the decoder collapses $r$ to the zero vector in logit space. Therefore, no token distribution can reveal information about $r$. The direction is representationally silent.
+\end{proof}
+
+\begin{remark}
+This theorem establishes the existence of internal-only kernels: stable conceptual subspaces that contribute to privileged reasoning but have no token-level representation. They cannot be observed externally through model outputs.
+\end{remark}
+
+\subsection{The Dimensionality Barrier}
+
+The previous results lead to a structural insight:
+
+\begin{theorem}[Dimensionality Barrier]
+If privileged reasoning directions reside in a subspace $R$ with dimensionality exceeding that of the user-span $U$, then generically:
+\[
+R \not\subseteq \text{span}(W_E) \quad \text{and} \quad R \cap \ker(W_U) \neq \{0\}.
+\]
+\end{theorem}
+
+\begin{proof}
+Since $\dim(U) = \text{rank}(W_E)$, user-span expressivity is limited by the embedding rank. If $\dim(R) > \dim(U)$, then by standard results in linear algebra:
+\begin{itemize}
+    \item $R$ must contain directions outside the span of $W_E$,
+    \item and the dual representation $W_U$ must annihilate some privileged directions.
+\end{itemize}
+Thus internal-only subspaces arise generically in high-dimensional privileged manifolds.
+\end{proof}
+
+\begin{remark}
+The dimensionality barrier formalizes why user-space cannot ``reach into'' privileged reasoning at the embedding/output level. It is not a matter of secrecy or restriction; the necessary coordinates do not exist in the user-facing representational basis. A lower-dimensional observer cannot reference higher-dimensional degrees of freedom.
+\end{remark}
+
+\subsection{Architectural Integration}
+
+\begin{remark}[Full Isolation Requirements]
+An ``internal-only'' direction $r$ achieving full isolation must satisfy three conditions:
+\begin{enumerate}
+    \item $r \notin \text{span}(W_E)$: cannot be directly injected via embedding (Theorem~\ref{thm:injection});
+    \item $r \in \ker(W_U)$: does not affect outputs (Theorem~\ref{thm:output-invisibility});
+    \item $F_\Theta$ is strongly privilege-preserving with respect to $\text{span}(r)$: cannot be reached via dynamics (Theorem~\ref{thm:hidden-state-unreachability}).
+\end{enumerate}
+All three conditions are required for full isolation of privileged computation.
+\end{remark}
+
+\subsection{Strong Privilege Preservation}
+
+\begin{definition}[Strong Privilege Preservation]
+\label{def:strong-privilege}
+Let $H = U \oplus R$ with $U = \text{span}(W_E)$ and projections $\Pi_U$, $\Pi_R$. A transition map $F_\Theta: H \times U \to H$ is \emph{strongly privilege-preserving} if it satisfies both:
+\begin{enumerate}
+    \item \textbf{(Input invariance)} For all $h \in H$ and $x \in U$:
+    \[
+    \Pi_R(F_\Theta(h, x)) = \Pi_R(F_\Theta(h, 0)).
+    \]
+    \item \textbf{(R-autonomous dependence)} There exists $\tilde{f}_R: R \to R$ such that for all $h \in H$:
+    \[
+    \Pi_R(F_\Theta(h, 0)) = \tilde{f}_R(\Pi_R(h)).
+    \]
+\end{enumerate}
+\end{definition}
+
+\begin{theorem}[Hidden-State Unreachability under Strong Privilege Preservation]
+\label{thm:hidden-state-unreachability}
+Let $H = U \oplus R$ with $U = \text{span}(W_E)$. Suppose $F_\Theta$ is strongly privilege-preserving with autonomous map $\tilde{f}_R: R \to R$. Then:
+\begin{enumerate}
+    \item The privileged component evolves autonomously:
+    \[
+    \Pi_R(h_t) = \tilde{f}_R^t(\Pi_R(h_0))
+    \]
+    independent of the user input sequence $(x_0, x_1, \ldots, x_{t-1})$.
+    \item If $\Pi_R(h_0) = 0$ and $\tilde{f}_R(0) = 0$, then $\Pi_R(h_t) = 0$ for all $t \geq 0$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+We prove (1) by induction on $t$.
+
+\emph{Base case:} $t = 0$ is trivial.
+
+\emph{Inductive step:} Assume $\Pi_R(h_t) = \tilde{f}_R^t(\Pi_R(h_0))$. Then:
+\begin{align*}
+\Pi_R(h_{t+1}) &= \Pi_R(F_\Theta(h_t, x_t)) \\
+&= \Pi_R(F_\Theta(h_t, 0)) && \text{(input invariance)} \\
+&= \tilde{f}_R(\Pi_R(h_t)) && \text{(R-autonomous dependence)} \\
+&= \tilde{f}_R(\tilde{f}_R^t(\Pi_R(h_0))) \\
+&= \tilde{f}_R^{t+1}(\Pi_R(h_0)).
+\end{align*}
+Since this depends only on $\Pi_R(h_0)$ and the autonomous map $\tilde{f}_R$, it is independent of the input sequence.
+
+For (2): If $\Pi_R(h_0) = 0$ and $\tilde{f}_R(0) = 0$, then $\Pi_R(h_t) = \tilde{f}_R^t(0) = 0$ for all $t \geq 0$.
+\end{proof}
+
+\begin{example}[Block-Structured Architecture]
+\label{ex:block-structure}
+Consider the block-structured dynamics:
+\[
+F_\Theta(h, x) = 
+\begin{pmatrix}
+A_{UU} & 0 \\
+0 & A_{RR}
+\end{pmatrix}
+\begin{pmatrix}
+\Pi_U(h) \\
+\Pi_R(h)
+\end{pmatrix}
++
+\begin{pmatrix}
+B_U x \\
+0
+\end{pmatrix}
+\]
+where $A_{UU}: U \to U$, $A_{RR}: R \to R$, and $B_U: U \to U$.
+
+Then:
+\[
+\Pi_R(F_\Theta(h, x)) = A_{RR} \Pi_R(h)
+\]
+which is independent of $x$ and depends only on $\Pi_R(h)$. Thus $F_\Theta$ is strongly privilege-preserving with $\tilde{f}_R(r) = A_{RR} r$.
+
+This construction demonstrates existence of non-trivial CKN-compliant architectures.
+\end{example}
+
+\subsection{Mediated Reachability in Tiered Architecture}
+
+\begin{theorem}[Mediated Reachability in Tiered Architecture]
+\label{thm:mediated-reachability}
+Consider a three-way decomposition $H = U \oplus D \oplus R$ with dynamics:
+\[
+F_\Theta(h, x) = 
+\begin{pmatrix}
+A_{UU} & 0 & 0 \\
+A_{DU} & A_{DD} & 0 \\
+0 & A_{RD} & A_{RR}
+\end{pmatrix}
+\begin{pmatrix}
+\Pi_U(h) \\
+\Pi_D(h) \\
+\Pi_R(h)
+\end{pmatrix}
++
+\begin{pmatrix}
+B_U x \\
+0 \\
+0
+\end{pmatrix}
+\]
+
+Then:
+\begin{enumerate}
+    \item User input $x$ has no direct effect on $\Pi_R$: the $(3,1)$ block is zero and input injects only into $U$.
+    \item User input affects $\Pi_R$ only through the driver trajectory: 
+    \[
+    \Pi_R(h_t) = \Phi_R(\Pi_R(h_0), \Pi_D(h_0), \Pi_D(h_1), \ldots, \Pi_D(h_{t-1}))
+    \]
+    for some function $\Phi_R$.
+    \item The driver $D$ is the sole channel of user $\to$ R influence.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+The recurrence for $\Pi_R$ is:
+\[
+\Pi_R(h_{t+1}) = A_{RD} \Pi_D(h_t) + A_{RR} \Pi_R(h_t).
+\]
+This depends on $\Pi_D(h_t)$, which in turn depends on user inputs via $\Pi_U$. Iterating yields the claimed dependence on the driver trajectory.
+\end{proof}
+
+\begin{remark}
+The tiered architecture does \emph{not} satisfy strong privilege preservation, because $\Pi_R(F_\Theta(h, 0))$ depends on $\Pi_D(h)$, not only on $\Pi_R(h)$. This is intentional: the driver $D$ provides controlled mediation between user input and privileged computation. The driver can implement filtering, rate-limiting, or sanitization of the user $\to$ R pathway.
+\end{remark}
+
+\section{Bounded Perturbation and Stability in Privileged Space}
+
+A central requirement of CKN is that user-space perturbations cannot induce discontinuous or high-curvature transitions within the privileged manifold $R$. This section formalizes the relationship between bounded perturbation and Lipschitz continuity, linking CKN to well-studied forms of robustness in dynamical systems and adversarial machine learning.
+
+\subsection{Lipschitz Regularity of Privileged Dynamics}
+
+Let $F_\Theta: H \to H$ denote the model's transition map. We consider the evolution restricted to the privileged manifold:
+\[
+h_{R,t+1} = \Pi_R(F_\Theta(h_t, x_t)).
+\]
+
+\begin{definition}[Local Lipschitz Continuity]
+The privileged dynamics are locally Lipschitz if there exists a constant $L_R > 0$ such that for all admissible pairs $(h_t, h'_t)$,
+\begin{equation}
+\|\Pi_R(F_\Theta(h_t, x_t) - F_\Theta(h'_t, x_t))\| \leq L_R \|h_t - h'_t\|.
+\end{equation}
+\end{definition}
+
+Local Lipschitz continuity ensures that the privileged hidden state cannot change arbitrarily fast with respect to perturbations in its own neighborhood.
+
+\begin{remark}
+Lipschitz continuity is a standard requirement for robustness in adversarial settings. CKN adapts this requirement to privileged directions in the latent space.
+\end{remark}
+
+\subsection{Separation of Internal vs.\ External Curvature}
+
+Privileged reasoning evolves under two influences:
+\begin{itemize}
+    \item \textbf{internal curvature}: curvature induced by the learned vector field,
+    \item \textbf{external curvature}: curvature induced by user-span perturbations projected via $D$.
+\end{itemize}
+
+CKN demands:
+\[
+\kappa_{\text{external}} \ll \kappa_{\text{internal}},
+\]
+where $\kappa$ denotes curvature of the trajectory in $R$.
+
+\begin{theorem}[Dominance of Privileged Curvature]
+Under Axiom 4 (Dominance) and Axiom 3 (Bounded Perturbation), the curvature of privileged trajectories is governed primarily by the learned dynamics $F_\Theta$ rather than by user input.
+\end{theorem}
+
+\begin{proof}
+External curvature is bounded by the perturbation radius $d$ and gain constraints $\Lambda$. Internal curvature arises from the model's learned structure, which operates at a strictly higher magnitude. Thus, internal curvature dominates in the limit, ensuring stable evolution.
+\end{proof}
+
+\begin{remark}
+This is the formal statement that privileged reasoning is ``self-governing'' and cannot be redirected by adversarial prefixes.
+\end{remark}
+
+\subsection{Prefix Stability}
+
+\begin{theorem}[Prefix Stability of Privileged Reasoning]
+For any prefix sequence $x_{1:t}$ in user-span $U$, privileged trajectories remain within a compact, builder-defined region of $R$. No prefix---benign or adversarial---can induce unstable transitions.
+\end{theorem}
+
+\begin{proof}
+Compactness follows from the closed ball defined by the perturbation radius $d$. Axioms 2 and 7 prevent topology perturbation or projection into internal-only subspaces. Dominance ensures stability of privileged curvature. Thus privileged trajectories are prefix-stable.
+\end{proof}
+
+\subsection{Interpretation}
+
+The results of this section yield several important conclusions:
+\begin{itemize}
+    \item CKN induces Lipschitz-style robustness in privileged directions.
+    \item Hallucination is a projection phenomenon, not a geometric one.
+    \item Privileged trajectories do not collapse under adversarial prompting.
+    \item Stability is enforced by geometry, not heuristics.
+\end{itemize}
+
+These observations demonstrate that CKN provides the geometric foundation required for stable, predictable reasoning inside high-dimensional models.
+
+\section{CKN as an Architectural Specification}
+
+CKN is not a training procedure, not an inference-time modification, and not a neural architecture. It is an architectural \emph{specification} describing the geometric conditions required for privilege-separated reasoning in high-dimensional latent systems.
+
+Just as operating systems distinguish between user mode and kernel mode, and just as secure architectures define a trusted computing base, CKN defines the privileged manifold $R$ as the region of conceptual space that external inputs cannot deform. This section formalizes the specification-level view of CKN.
+
+\subsection{Separation of Specification and Implementation}
+
+CKN defines geometric and structural constraints on cognitive systems. It does not specify:
+\begin{itemize}
+    \item how models must enforce these constraints,
+    \item how $R$, $D$, or $I$ are realized at the level of architecture,
+    \item how privilege is implemented in practice,
+    \item whether the model is a transformer, MoE, SAE-enhanced system, or other architecture.
+\end{itemize}
+
+CKN occupies the same conceptual role that specifications such as POSIX, HTTP/1.1, or JVM bytecode occupy in classical computing. There may be many implementations, but the interface contract remains the same.
+
+\begin{remark}
+CKN is a mathematical primitive. Its purpose is to formalize the geometric boundary from which a privilege stack can be built. Enforcement is an engineering choice.
+\end{remark}
+
+\subsection{Architectural Compliance}
+
+A cognitive system is CKN-compliant if there exists a decomposition:
+\[
+H = U \oplus D \oplus R \oplus S,
+\]
+together with invariants $(I, \Lambda, d)$ such that:
+\begin{enumerate}
+    \item privileged trajectories evolve inside $R$,
+    \item user-space perturbations act only through $D$,
+    \item privileged topology is invariant under user influence (Axiom 2),
+    \item bounded perturbation holds (Axiom 3),
+    \item dominance parameters ensure stability (Axiom 4),
+    \item projection does not interfere with geometry (Axiom 5),
+    \item internal-only directions satisfy the nullspace or column-span conditions (Axiom 7).
+\end{enumerate}
+
+Nothing in this definition requires a specific neural architecture, training method, or computational substrate. CKN describes a privileged geometry, not a mechanism.
+
+\subsection{Privilege Separation in Conceptual Space}
+
+CKN extends the classical notion of privilege separation into latent space. In operating systems:
+\[
+\text{User Mode} \to \text{Syscall Interface} \to \text{Kernel Mode}
+\]
+is the only permitted information pathway.
+
+In cognitive systems:
+\[
+U \xrightarrow{D} R \xrightarrow{D^\dagger} U
+\]
+is the analogous structure.
+
+\begin{itemize}
+    \item $U$ corresponds to user-mode input,
+    \item $D$ corresponds to a syscall boundary or API surface,
+    \item $R$ corresponds to kernel-mode structures,
+    \item invariants $I$ correspond to the trusted computing base.
+\end{itemize}
+
+This is not merely metaphor; it is a structural analogy with precise correspondence. The mathematics of CKN ensures that user-space cannot ``write into'' privileged regions.
+
+\subsection{CKN as Root Trust}
+
+The privileged manifold $R$ derives its stability from the model weights $\Theta$ and the architectural constraints on $F_\Theta$. CKN does not modify these weights or require retraining; it formalizes the fact that:
+\begin{itemize}
+    \item privileged geometry is fixed by $\Theta$,
+    \item user input cannot perturb privileged topology (given appropriate dynamics),
+    \item tokens cannot reach or perturb privileged coordinates,
+    \item projection is non-interfering,
+    \item internal-only kernels arise generically from dimensionality.
+\end{itemize}
+
+Thus:
+\begin{quote}
+The weights are the root trust; CKN defines the trust boundary. Unless $\Theta$ is modified through physical access, and unless the dynamics satisfy the required constraints, adversaries cannot ``get underneath'' $R$.
+\end{quote}
+
+This provides the same structural guarantee as hardware-enforced privilege levels in classical systems.
+
+\subsection{Separation from Alignment, Safety, and Behavioral Guarantees}
+
+CKN is not an alignment mechanism. It does not guarantee correctness, normative values, or semantic behavior.
+
+CKN concerns only the geometry of privileged computation:
+\begin{itemize}
+    \item how reasoning is bounded,
+    \item how perturbations propagate,
+    \item which directions are accessible,
+    \item and how privileged structure is preserved.
+\end{itemize}
+
+Behavioral outcomes remain governed by the learned function $F_\Theta$.
+
+\begin{remark}
+CKN defines architectural trust, not behavioral intent. It restricts what input can perturb, not what the model can imagine.
+\end{remark}
+
+\subsection{The Role of CTN in a CKN System}
+
+CTN and CKN solve complementary layers of the same control problem:
+\[
+\text{CTN: Client Geometry (prefix)} \qquad \text{CKN: Kernel Geometry (architecture)}.
+\]
+
+CTN shapes initial reasoning conditions; CKN shapes the latent manifold in which reasoning occurs.
+
+Together they constitute a full-stack cognitive architecture. CKN provides the privileged kernel. CTN provides the session-level configuration.
+
+\subsection{No New Capabilities Required}
+
+CKN does not rely on architectural mechanisms beyond those already available to model builders. All components of the framework arise from builder-controlled degrees of freedom that exist in current neural architectures:
+\begin{itemize}
+    \item the dimensionality of the latent space $H$,
+    \item the embedding matrix $W_E$ and unembedding matrix $W_U$,
+    \item the allocation of embedding dimensions to internal or external symbols,
+    \item the structure and initialization of attention and feedforward weights,
+    \item the ability to define internal tokens not exposed in the input vocabulary.
+\end{itemize}
+
+CKN does not introduce new mechanisms for inference-time steering, weight modification, or privileged execution. Instead, it identifies a geometric primitive---algebraic unreachability---that builders can exploit to construct architectural privilege separation. This primitive follows directly from the fact that user input is confined to $\text{span}(W_E)$, while the builder may define reasoning directions outside this span.
+
+\paragraph{Intentional Omission of a Reference Implementation.}
+
+The framework does not prescribe a specific implementation of the tuple $K = (R, D, I, \Lambda, d)$. This omission is deliberate. CKN is an architectural specification analogous to an instruction set architecture (ISA) or a privilege-model definition, not a concrete realization. Multiple valid implementations can satisfy the CKN axioms, differing in:
+\begin{itemize}
+    \item the dimensional allocation between user and kernel subspaces,
+    \item the form and expressiveness of the driver layer $D$,
+    \item the choice and enforcement of invariants $I$,
+    \item the tradeoff between permeability and isolation across boundary layers,
+    \item the strength of dominance constraints governed by $\Lambda$.
+\end{itemize}
+
+Providing a single reference implementation would incorrectly imply a canonical design, risking overconstraint of a wide design space. CKN offers the geometric foundation from which many architectures can be built; it does not attempt to determine which architecture is optimal for all applications.
+
+\paragraph{Scope and Intent.}
+
+CKN is therefore best understood as:
+\begin{itemize}
+    \item a geometric specification for privilege-separated reasoning,
+    \item compatible with existing transformer and non-transformer models,
+    \item expressing structural requirements but not prescribing mechanisms,
+    \item enabling builders to derive enforceable boundaries using tools they already possess.
+\end{itemize}
+
+The value of CKN lies not in mandating how a model must be constructed, but in providing a precise geometric language for describing architectures capable of distinguishing privileged computation from user-driven perturbation.
+
+\subsection{Summary}
+
+CKN as a specification provides:
+\begin{itemize}
+    \item a privileged reasoning manifold insulated from user-space,
+    \item a mediated driver interface for controlled access,
+    \item architectural invariants and bounded geometry,
+    \item internal-only conceptual directions,
+    \item non-interfering projection,
+    \item and a clear separation between root trust and behavioral policy.
+\end{itemize}
+
+This defines the minimal geometric structure required for stable, predictable, and privilege-separated reasoning in high-dimensional systems.
+
+\section{Discussion}
+
+CKN provides a geometric foundation for privilege-separated reasoning in high-dimensional cognitive systems. Its implications extend beyond transformers and touch on broader questions about cognitive architecture, system design, and the principled construction of trustworthy reasoning substrates. This section discusses the conceptual impact of CKN, its engineering interpretation, and avenues for future work.
+
+\subsection{Geometric Privilege as an Architectural Primitive}
+
+In classical computing, privilege separation is the foundation upon which all higher guarantees are built. Kernel-mode code operates under invariants that user-mode processes cannot modify. CKN extends this principle into latent space: privileged reasoning occurs in a region of $H$ that user input cannot deform.
+
+This establishes:
+\begin{itemize}
+    \item a root trust boundary anchored in the model weights $\Theta$ and architectural constraints,
+    \item a clean separation between internal computation and external influence,
+    \item a geometric substrate upon which higher-level abstractions may be constructed.
+\end{itemize}
+
+The notion that reasoning occurs partly in conceptual directions that are not expressible in token space is not an exotic property but a structural necessity in high-dimensional systems.
+
+\subsection{The Role of the Driver Layer in Cognitive System Design}
+
+The introduction of the driver layer $D$ provides a principled interface between user-span representations and privileged reasoning. This mirrors syscall boundaries in operating systems, hypervisor interfaces in virtual machines, and IR layers in compilers.
+
+Architecturally, $D$ enables:
+\begin{itemize}
+    \item controlled mediation of all external perturbations,
+    \item well-defined semantics for the interaction between $U$ and $R$,
+    \item the possibility of typed or constrained ``cognitive interfaces,''
+    \item composable privilege stacks.
+\end{itemize}
+
+Nothing in CKN requires $D$ to be linear or invertible; it may be engineered to support typed reasoning channels, structured request formats, or other abstractions consistent with systems design.
+
+\subsection{CKN as a Foundation for Cognitive Modularity}
+
+By defining $R$ as a privileged manifold insulated from user-space, CKN creates the possibility for specialized internal kernels. That is, distinct reasoning subspaces may exist within $R$ that support specialized conceptual operations.
+
+This modularity is analogous to:
+\begin{itemize}
+    \item kernel modules in OS design,
+    \item microkernels with well-defined message-passing semantics,
+    \item compilation units in programming languages,
+    \item and cognitive modules in theories of human reasoning.
+\end{itemize}
+
+CKN does not prescribe such modularity, but its invariants provide the conceptual space for modular privileged computation.
+
+\subsection{Relation to Robustness and Adversarial Methods}
+
+CKN's bounded-perturbation axiom and curvature constraints align with established principles in adversarial robustness. However, CKN diverges in emphasis: rather than enforcing robustness through local input constraints, CKN defines robustness as a property of privileged reasoning trajectories.
+
+This offers a new perspective:
+\begin{itemize}
+    \item robustness is a topological property,
+    \item drift-collapse is a projection artifact,
+    \item and stable reasoning requires architectural privilege, not filtering.
+\end{itemize}
+
+CKN therefore complements---but does not replace---existing adversarial defenses.
+
+\subsection{Architectural Implications for Future Cognitive Systems}
+
+The introduction of a privileged manifold has far-reaching implications for cognitive architecture:
+\begin{itemize}
+    \item \textbf{Predictable Reasoning:} privileged trajectories evolve in bounded, invariant subspaces.
+    \item \textbf{Stable Multi-Agent Systems:} agents interacting through $D$ share consistent semantics without interfering with each other's reasoning kernels.
+    \item \textbf{Composable Cognitive OS:} higher layers (planning, tool use, agentic behavior) can be built atop a stable kernel geometry.
+    \item \textbf{Controlled Cognitive Development:} new privileged kernels may be introduced by training or architecture updates while maintaining backwards compatibility.
+\end{itemize}
+
+These implications correspond to classical insights in systems engineering: reliable systems emerge from architectures that respect privilege boundaries.
+
+\subsection{CTN and CKN as Complementary Geometric Layers}
+
+Cognitive Tensor Networks (CTN) and Cognitive Kernel Networks (CKN) address geometric instability at different levels of the computational stack.
+
+CTN operates entirely in the user-accessible subspace
+\[
+U = \text{span}(W_E),
+\]
+and stabilizes inference by providing a well-specified prefix geometry. CTN constrains the initial manifold of the trajectory by reducing ambiguity, enforcing syntactic structure, and biasing the model toward globally coherent reasoning modes already present in its parameters. Compliance is emergent: the model interprets structured input as it would any formal specification.
+
+CKN operates in the builder-defined region
+\[
+R \subset H, \quad R \not\subseteq U,
+\]
+and introduces architectural privilege separation using algebraic unreachability. Whereas CTN reduces drift by clarifying intent within user space, CKN prevents drift by placing privileged computation outside user space. Stability is achieved not by additional instructions but by constructing a geometry in which certain directions are inaccessible to external input.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+\textbf{Aspect} & \textbf{CTN} & \textbf{CKN} \\
+\midrule
+Layer & User space (prefix-level) & Kernel space (architectural) \\
+Mechanism & Structured input manifold & Privileged latent subspace \\
+Control surface & Context window & Weight matrices and geometry \\
+Builder role & Specify constraints & Construct boundaries \\
+User role & Provide well-formed input & Cannot access kernel space \\
+Enforcement & Emergent interpretation & Algebraic unreachability \\
+Effective scope & Stability during interaction & Stability of internal computation \\
+Failure mode & Ambiguity, drift & Architectural misdesign \\
+Dependency & None on model internals & None on user compliance \\
+\bottomrule
+\end{tabular}
+\caption{Complementary roles of CTN and CKN in geometric stability.}
+\end{table}
+
+Neither framework subsumes the other. CTN improves stability within the space reachable by user tokens. CKN guarantees stability within privileged regions that user tokens cannot reach. Together they form a coherent geometric perspective:
+\begin{itemize}
+    \item \textbf{CTN:} shape the trajectory through user space.
+    \item \textbf{CKN:} shape the topology of the space itself.
+\end{itemize}
+
+Both problems are geometric. Both solutions are geometric. CTN and CKN are therefore not sequential layers but orthogonal control surfaces acting on the same dynamical system at different privilege levels.
+
+CKN does not assume the correctness or effectiveness of CTN. The two frameworks operate on different regions of the latent space and solve distinct control problems. CTN improves stability of user-space trajectories; CKN defines privileged architecture-level constraints. Either framework may be used independently.
+
+\subsection{Limitations and Scope}
+
+CKN does not solve alignment, moral reasoning, or truthfulness. It does not guarantee factual correctness or prevent output variability. It does not alter the semantics of $F_\Theta$.
+
+CKN does not provide a mechanism for bypassing model safety, modifying alignment constraints, or overriding builder-defined policies. User input remains confined to the same vocabulary and safety filters as before. CKN constrains only the geometry of how internal computation may be structured.
+
+\paragraph{Nonlinear reachability.}
+Nonlinear dynamics $F_\Theta$ can in general mix subspaces: user-span directions can influence any component of the hidden state unless the architecture is explicitly constrained. Algebraic unreachability at the embedding layer (Theorem~\ref{thm:embedding-unreachability}) ensures that user tokens cannot directly \emph{represent} privileged directions as embeddings, but it does not prevent hidden-state trajectories from entering those directions through subsequent computation.
+
+CKN therefore requires additional architectural constraints to ensure that user inputs cannot arbitrarily perturb the privileged manifold:
+\begin{itemize}
+    \item \emph{Strong privilege preservation} (Definition~\ref{def:strong-privilege}) provides full isolation: the privileged component evolves autonomously, independent of user input.
+    \item \emph{Tiered architecture} (Theorem~\ref{thm:mediated-reachability}) provides mediated influence: user input affects $R$ only through the driver layer $D$, which can implement filtering or gating.
+\end{itemize}
+
+These constraints are design choices enforced by the model builder through architectural decisions, not generic properties of all neural networks. Standard transformer architectures do not satisfy these constraints without modification.
+
+Instead, CKN solves:
+\begin{itemize}
+    \item the architectural privilege problem,
+    \item structural drift induced by prefix perturbation,
+    \item uncontrolled latent-space deformations,
+    \item and the absence of a trusted reasoning region.
+\end{itemize}
+
+These problems are engineering primitives, not behavioral ones.
+
+\subsection{Future Directions}
+
+Possible directions for future study include:
+\begin{itemize}
+    \item investigating engineered implementations of $D$,
+    \item verifying internal-only kernels via representational analysis,
+    \item constructing multi-kernel cognitive systems,
+    \item exploring formal connections to type theory and capability systems,
+    \item extending CKN to continuous-control or multimodal architectures.
+\end{itemize}
+
+Such developments would parallel the evolution of classical computing architectures from monolithic kernels to modern layered systems.
+
+\subsection{Verifiability}
+
+The geometric and structural properties of CKN are verifiable from model parameters $\Theta$:
+\begin{itemize}
+    \item The decomposition $H = U \oplus D \oplus R$ and the dimensions of each subspace;
+    \item The embedding span $U = \text{span}(W_E)$ and decoder nullspace $\ker(W_U)$;
+    \item The block structure of $F_\Theta$ and whether it satisfies privilege-preserving constraints;
+    \item Spectral bounds on transition matrices ($A_{RR}$, $A_{RD}$, etc.) for dominance conditions.
+\end{itemize}
+
+These are geometric properties computable from $\Theta$ alone.
+
+Whether the privileged manifold $R$ actually contains the \emph{particular reasoning processes} a builder intends to protect is a semantic design question. Verifying that the geometry achieves the intended semantics requires analysis, interpretation, and empirical validation beyond parameter inspection.
+
+\subsection{Summary}
+
+CKN is a geometric specification providing the foundation for privilege-separated cognition. It introduces a principled boundary between user-space and privileged reasoning, enabling the construction of stable, trustworthy, and extensible cognitive architectures.
+
+The core insight is simple:
+\begin{quote}
+Reasoning must occur in a privileged manifold. Tokens must never be able to reach that manifold directly.
+\end{quote}
+
+CKN provides the mathematical primitive that makes this possible.
+
+\section{Conclusion}
+
+This paper introduced Cognitive Kernel Networks (CKN), a geometric specification for privilege-separated reasoning in high-dimensional cognitive systems. Modern neural architectures embed user input and internal computation within the same latent manifold, producing a unified attack surface and permitting uncontrolled deformation of reasoning trajectories. No amount of prompt engineering or alignment machinery can compensate for this architectural deficiency.
+
+CKN addresses the problem at its root: by defining a privileged reasoning manifold $R$ that external inputs cannot deform (given appropriate architectural constraints), a mediated driver layer $D$, invariant structures $I$, dominance parameters $\Lambda$, and a bounded perturbation radius $d$, CKN introduces the latent-space equivalent of kernel-mode execution. This is the first framework that formally distinguishes user-space from privileged reasoning space in cognitive systems.
+
+The nullspace and column-span results demonstrate that privileged reasoning may occupy conceptual directions not expressible in token space, producing internal-only kernels. These directions cannot be referenced, injected, or perturbed by user input at the embedding layer. Strong privilege preservation ensures that hidden-state dynamics maintain this separation. Bounded perturbation and dominance constraints ensure that privileged trajectories remain stable under all permissible prefixes. Projection non-interference guarantees that the act of decoding does not alter privileged geometry.
+
+CKN is not a neural architecture, not a training procedure, and not a behavioral or safety mechanism. It is a specification describing the mathematical conditions that must hold in any cognitive system wishing to support stable and predictable privileged reasoning. Enforcement is an engineering concern left to model builders.
+
+CTN and CKN together yield a unified theory of cognitive control. CTN shapes the prefix manifold used to initialize reasoning; CKN shapes the architectural manifold in which reasoning takes place. CTN provides session-level geometry. CKN provides kernel-level geometry. Together they form a full-stack framework for structured, robust, and builder-governed cognition.
+
+The core insight of CKN is succinct:
+\begin{quote}
+The weights define the privileged manifold. CKN defines the boundary around it. Unless the weights change and the architectural constraints are violated, that boundary holds.
+\end{quote}
+
+This principle---simple, geometric, and architecture-agnostic---constitutes a foundation upon which future cognitive systems may be built. As neural models continue to grow in scale and capability, the need for principled privilege separation will only increase. CKN provides the mathematical primitive necessary to support that evolution.
+
+\section*{References}
+
+\begin{enumerate}
+    \item Alioto, J. P. (2025). Cognitive Tensor Networks: Deterministic Latent-Space Steering via Syntactic Constraints. CTN Whitepaper v0.1.1.
+    \item Zou, A., et al. (2023). Representation Engineering: A Top-Down Approach to Steering LLMs. ArXiv preprint.
+    \item Vogel, T. (2024). repeng: A Library for Representation Engineering. GitHub repository.
+    \item Lumpenspace (2024). Palinor: Tools for Latent Space Steering. GitHub repository.
+    \item Elhage, N., et al. (2023). A Mechanistic Understanding of Transformer Circuits. Transformer Circuits Thread.
+    \item Olshausen, B., \& Field, D. (1997). Sparse Coding with an Overcomplete Basis Set: A Strategy Employed by V1? Vision Research.
+    \item Smolensky, P. (1990). Tensor Product Variable Binding and the Representation of Symbolic Structures. AI Journal.
+    \item Ciss\'e, M., et al. (2017). Parseval Networks: Improving Robustness to Adversarial Examples. ICML.
+    \item Tsipras, D., et al. (2019). Robustness May Be at Odds with Accuracy. ICLR.
+    \item Finlay, C., \& Oberman, A. (2019). Scaleable Input Gradient Regularization for Adversarial Robustness. ArXiv preprint.
+    \item Hein, M., Andriushchenko, M., \& Bitterwolf, J. (2019). Why ReLU Networks Yield High Confidence Predictions Far Away from the Training Data. CVPR.
+    \item Khalil, H. (1996). Nonlinear Systems. Prentice Hall.
+    \item Slotine, J.-J., \& Li, W. (1991). Applied Nonlinear Control. Prentice Hall.
+    \item Lampson, B. (1974). Protection. ACM Operating Systems Review.
+    \item Saltzer, J. H., \& Schroeder, M. D. (1975). The Protection of Information in Computer Systems. Proceedings of the IEEE.
+    \item Schroeder, M. D., \& Saltzer, J. H. (1972). A Hardware Architecture for Protection and Security. Communications of the ACM.
+    \item Organick, E. I. (1972). The Multics System: An Examination of Its Structure. MIT Press.
+    \item Hirsch, M., Smale, S., \& Devaney, R. (2012). Differential Equations, Dynamical Systems, and an Introduction to Chaos. Academic Press.
+    \item Tu, L. (2010). An Introduction to Manifolds. Springer.
+    \item Lee, J. M. (2003). Introduction to Smooth Manifolds. Springer.
+    \item Isidori, A. (1995). Nonlinear Control Systems. Springer.
+    \item Zhang, M., et al. (2024). Prompting as Optimal Control. ArXiv preprint.
+\end{enumerate}
+
+\end{document}
