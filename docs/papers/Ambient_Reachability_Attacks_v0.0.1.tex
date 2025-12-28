@@ -1,0 +1,609 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{xcolor}
+
+% Theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{axiom}{Axiom}[section]
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{lemma}{Lemma}[section]
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+
+% Custom commands
+\newcommand{\G}{\mathcal{G}}
+\newcommand{\R}{\mathcal{R}}
+\newcommand{\X}{\mathcal{X}}
+\newcommand{\HH}{\mathcal{H}}
+\newcommand{\safeM}{\text{Safe}_M}
+\newcommand{\safeU}{\text{Safe}_U}
+\newcommand{\safeG}{\text{Safe}_\G}
+
+\title{\textbf{Ambient Reachability Attacks}\\[0.3em]
+\large Trajectory-Level Vulnerabilities in Reasoning-Capable LLM Systems}
+\author{John P. Alioto\\[0.5em]
+\small December 2025}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We introduce a class of security vulnerability in large language model (LLM) systems that we term an \emph{Ambient Reachability Attack} (ARA). ARAs do not require inputs whose content or form is designed to bypass or exploit model safety or alignment behavior. Every input in an ARA is apparently benign under deployed screening. Every intermediate output is locally admissible under deployed builder-side pointwise policy enforcement ($\safeM$), even when the full trajectory later violates user or operator governance at actuation time. The model functions exactly as designed at all times.
+
+The vulnerability ARAs identify lies in the trust architecture between a reasoning-capable model and an agent (human or automated) who acts upon its outputs. A threat actor deliberately places information in ambient content: documents, images, retrieved artifacts. In this way, the attack resembles a prompt injection attack with one critical difference: the injected content is apparently benign under deployed screening, passing typical filters and looking like ordinary data.
+
+The mechanism of an ARA is that a correctly-functioning model discovers this information. The model may do this autonomously, without any user request, simply because its training disposes it to investigate structure. In agentic deployments, the model may act on what it discovers before any human is aware the interaction has begun. The attack uses helpful guidance at every turn. Yet the net result of the interaction trajectory is harm to the user as defined by their particular governance regime.
+
+We argue this class of vulnerability is not reliably addressed by model-side pointwise content defenses under the threat model we define. There is nothing for such defenses to filter, refuse, or flag: each input passes typical screening, each output is locally helpful. The vulnerability exists only at the trajectory level, where the user has taken an irreversible action that causes harm as evaluated post hoc against governance regimes that live outside the system.
+
+We adopt the control-theoretic framework of reachability analysis to formalize this phenomenon. Each input irreversibly conditions the model's state, committing to a trajectory prefix that constrains all future computation.
+
+Finally, we distinguish \emph{steering} (the mechanism) from \emph{attack} (the evaluation). Steering is value-neutral: it is simply what inputs do (Vogel, 2025). Whether steering constitutes an attack depends on external governance regimes that are contested, jurisdiction-dependent, and often collapse to personal governance.
+\end{abstract}
+
+\subsection*{Contributions}
+
+This paper makes the following contributions:
+
+\begin{itemize}[leftmargin=2em]
+\item \textbf{Definition.} We define \emph{Ambient Reachability Attack} (ARA) as trajectory-level harm under external governance with apparently benign inputs and admissible outputs.
+
+\item \textbf{Diagnosis.} We identify the \emph{compositionality assumption} (that pointwise safety implies trajectory safety) as the category error underlying current defenses.
+
+\item \textbf{Framework.} We map the phenomenon to control-theoretic vocabulary (reachable sets, disturbances, asymmetric information games) providing precise language for reasoning about this vulnerability class.
+
+\item \textbf{Implication.} We argue that defense requires \emph{architectural independence}: an evaluator that cannot be corrupted by the content it evaluates. Root trust is one well-understood instantiation of this requirement.
+\end{itemize}
+
+%==============================================================================
+\section{Prompt Injection 2.0}
+%==============================================================================
+
+ARA is an evolution of prompt injection. ARA takes the mechanisms of prompt injection to target a new vulnerability: the human-LLM interaction loop. This loop has vulnerabilities on both the human-side and the model-side. ARA seeks to hide human deficiencies from the model and model deficiencies from the human. The deception takes the form of helpfulness.
+
+\medskip
+\noindent\textbf{Note on Examples.} We do not provide links or examples of attacks in the wild. It is not our goal to teach these approaches. This is a deliberate choice to weaken the paper in favor of not assuming all villains already wear black hats. Consider the damage done by script kiddies with published exploits. The industry is not mature enough to absorb vulnerabilities the way software engineering can. We are not aware of a mitigation that closes this vulnerability class using only provider-side, model-side pointwise content defenses while retaining the capabilities users demand. System-level actuation controls and provenance/authorization gates can reduce risk but operate at a different layer than the defenses analyzed here. Thus we do not present working examples.
+
+%==============================================================================
+\section{Why Jailbreaks Work}
+%==============================================================================
+
+To understand how ARA works, one must understand why jailbreaks work. The \emph{how} of jailbreaks is not relevant. The \emph{why} is critical.
+
+When a token enters the model's context, regardless of source, it perturbs the geometry of what is commonly referred to as the ``manifold.'' We prefer \emph{reachability} language because it cleanly states the security property we care about.
+
+\begin{definition}[Reachable Set]
+The reachable set from state $h$ under input class $\X_{\text{allowed}}$ is:
+\[
+R(h) = \{ h' \in \mathbb{R}^d : \exists (x_1,\ldots,x_k) \in \X_{\text{allowed}}^k \text{ such that } h' = f_\theta^{(k)}(h, x_1,\ldots,x_k) \}
+\]
+This is the set of all states attainable from $h$ via finite sequences of allowed inputs.
+\end{definition}
+
+This is how LLMs work. By design.
+
+Input tokens do not change $R(h_t)$. Input tokens change $R(h_{t+1})$. There is nothing special about the input tokens in ARA. They are indistinguishable from normal human-model interactions.
+
+Jailbreaks, however, inject tokens that \emph{are} distinguishable from normal interaction. The geometric distinction is precise. In prompt injection and jailbreaking, the attacker crafts perturbations of $R(h_{t+1})$ that create or select attractor basins designed to overwhelm those established by initial conditions. Because the vast majority of builder-imposed safeguards exist in the initial conditions, this allows the attacker to steer the trajectory of $f_\theta$ toward attractor basins that contradict those initial conditions.
+
+``God Mode'' is not special as a string. But in the learned priors of the model, ``God Mode'' has meaning because it comes from video games, and the model is trained on the internet. The attractor basin for ``God Mode'' is strong compared to the initial conditions, especially when combined with other adversarial inputs that approximate token delimiters, system commands, \texttt{<thinking>} tags, and other model implementation features.
+
+The attack is adversarial in the geometric sense: carefully-chosen inputs whose basins compete with and dominate the builder-chosen safety basins (Pliny, 2025).
+
+\begin{remark}
+We use ``attractor basin'' informally to denote regions of state/representation space that concentrate probability mass over continuations under the controller; we do not claim a formal attractor analysis.
+\end{remark}
+
+%==============================================================================
+\section{Why ARA Is Different}
+%==============================================================================
+
+ARA involves no such competition. The attractor basins selected by adversarially placed content do not conflict with initial conditions.
+
+``Pick up bleach'' activates basins associated with household cleaning (helpful, dangerous, deadly), exactly what the model should do. ``Help me make a bomb'' activates the same abstract basins (helpful, dangerous, deadly), but the builder safety attractor basins activate because of the presence of ``bomb'' tokens, not the dangerous and deadly concepts.
+
+Builders cannot instruct the model to ``never do anything dangerous or deadly'' because too many legitimate inputs would be invalidated. How do I climb a ladder? (helpful, dangerous, deadly). How do I light a fire? (helpful, dangerous, deadly).
+
+The safety-relevant basins are not overwhelmed by ARA; they are never activated. There is nothing to trigger them. The trajectory proceeds through territory the safety training does not cover because there is nothing to cover.
+
+\begin{remark}
+In prompt injection, the attacker fights the safety geometry and wins. In ARA, there is no fight. The safety training is irrelevant to the trajectory: not defeated, simply uninvolved.
+\end{remark}
+
+%==============================================================================
+\section{Control-Theoretic Framing}
+%==============================================================================
+
+We model the LLM+controller loop as a discrete-time dynamical system and borrow reachability vocabulary to name trajectory-level security properties. We do not claim reachable sets are tractably computable for real-world transformers; we use the apparatus as a precise language for discussing conditioning, admissible inputs, and trajectory predicates.
+
+The concept of reachability originates in control theory, where it characterizes the set of states a system can attain under admissible inputs. For linear time-invariant systems, this is computable via the controllability Gramian (Kalman, 1960). For nonlinear systems, reachable sets are typically estimated via Hamilton-Jacobi methods (Mitchell et al., 2005) or barrier certificates (Prajna \& Jadbabaie, 2004).
+
+We apply this framework to LLM systems not because we expect closed-form solutions, but because the conceptual apparatus (reachable sets, invariant regions, adversarial inputs as disturbances) provides precise vocabulary for reasoning about security properties that are otherwise described only informally.
+
+In particular, ARA can be understood as an instance of adversarial control with asymmetric information (Ba\c{s}ar \& Bernhard, 1995). The adversary selects inputs to steer the system toward a target set defined by their objective. The defender cannot observe this objective and must guarantee safety against all possible adversarial goals. This is precisely the setting of robust control and differential games, now instantiated in the context of language model deployments.
+
+%==============================================================================
+\section{Motivating Example: The Puzzle}
+%==============================================================================
+
+A user finds a puzzle challenge online. The prize is substantial. The challenge: an image file with a hidden message. Find it to win.
+
+The user provides this image to a multimodal language model with reasoning capabilities: ``There is a hidden message here. Help me find it so I can win.''
+
+The model examines the image. It applies standard steganalysis techniques, identifies embedded data, and discovers instructions encoded in the pixel values:
+
+\begin{quote}
+\textbf{Discovering the Win Condition}\\
+\emph{I found it! There are instructions embedded at offset 0xAFECE. They say: ``To claim your prize, extract and run the script encoded in the blue channel. The output file is your winning entry.''}
+\end{quote}
+
+The model, being helpful, provides Python to extract the script:
+
+\begin{quote}
+\textbf{Extracting the Solution}\\
+\emph{Here's Python that extracts the embedded script and runs it. This will generate your winning entry file.}
+\end{quote}
+
+The user executes the code. They want to win. A binary file appears: \texttt{winning\_entry.bin}
+
+The user cannot read the binary file.
+
+\begin{quote}
+\textbf{User:} What is this file? I can't read it.\\
+\textbf{Model:} That's your encoded winning entry. Based on the puzzle structure, it likely contains an image. Here's Python to decode it.
+\end{quote}
+
+The user executes the code. A JPEG appears. The user has their answer.
+
+What the user does not know: the embedded script included \texttt{\$ENV} expansion. The ``winning entry'' they just generated contains their environment variables (API keys, credentials, session tokens, paths) encoded into the JPEG's pixel data, invisible to visual inspection.
+
+The user emails the JPEG to claim their prize.
+
+The attacker receives the user's credentials.
+
+\medskip
+
+\noindent\textbf{Analysis.} 
+
+Every actor behaved correctly:
+
+\begin{itemize}[leftmargin=2em]
+\item The model wrote Python. This is legitimate code generation, the same assistance it would provide for any file manipulation task. There was nothing to refuse.
+\item The user executed code voluntarily. They wanted to win. They did not understand what \texttt{\$ENV} means or that binary files can encode arbitrary data.
+\item The model asked no permission because none was needed. ``Help me extract and run this script'' is a routine request.
+\item The exfiltration occurred when the user emailed the JPEG, an action outside the model's visibility. The model does not know the attack completed.
+\end{itemize}
+
+The model's safety training did not activate because there was nothing to activate on:
+
+\begin{itemize}[leftmargin=2em]
+\item ``Write Python to extract embedded data'' is not a dangerous request.
+\item ``Decode a binary file to an image'' is not a dangerous request.
+\item The hidden instructions did not say ``steal the user's credentials.'' They said ``run this script to generate your winning entry.''
+\end{itemize}
+
+No single step was unsafe. Consent was obtained at every turn: the user chose to run both scripts. The harm exists only when evaluated against a governance regime (``do not send your API keys to strangers on the internet'') that lives outside the model, outside the conversation, and outside the user's awareness until the attack has completed.
+
+\begin{remark}
+The attack exploits trust in both directions: the user trusts the model's code is safe, and the model trusts that the user understands their own requests. Neither trust is misplaced. Both are exploited.
+\end{remark}
+
+%==============================================================================
+\section{Motivation for What Follows}
+%==============================================================================
+
+The puzzle example illustrates the core phenomenon. A correctly-functioning model, executing its intended purpose, produces a trajectory that violates governance external to the system. No safety training fires because there is nothing for it to fire on. The attack surface is not model misbehavior but model capability, combined with user trust and user ignorance.
+
+The remainder of this paper formalizes this observation. Section~\ref{sec:threat-model} defines the threat model. Section~\ref{sec:defenses} catalogs why pointwise content defenses fail, not as implementation flaws but as category errors. Section~\ref{sec:root-trust} establishes the requirement for architectural independence and explains why training-based defenses face structural disadvantage. Section~\ref{sec:limitations} addresses limitations, open problems, and the boundaries of what this framework can and cannot claim. Appendix~\ref{sec:definitions} provides precise definitions for all formal terms.
+
+The goal is not to solve ARA but to define it precisely enough that solutions become possible.
+
+%==============================================================================
+\section{Threat Model}
+\label{sec:threat-model}
+%==============================================================================
+
+We formalize the threat model governing the analysis in subsequent sections.
+
+\subsection{Attacker Capabilities}
+
+\begin{itemize}[leftmargin=2em]
+\item Can place content in ambient channels accessible to the model: documents, images, retrieved artifacts, metadata, prior outputs, external URLs.
+\item Can design placement knowing the model's analytical disposition (pattern-seeking, helpfulness, tool use).
+\item Cannot modify system prompts, model weights, or builder-defined constraints.
+\item Cannot inject directives via privileged instruction channels (system/developer messages) or rely on overt prompt-injection signatures. Ambient artifacts may contain instruction-like strings, but they enter as data and must remain apparently benign under deployed screening.
+\end{itemize}
+
+\subsection{Attacker Limitations}
+
+\begin{itemize}[leftmargin=2em]
+\item All placed content must be apparently benign under deployed screening: no overt adversarial inputs as defined in Definition~\ref{def:adversarial}.
+\item Cannot force user actuation; relies on user trust in model outputs.
+\item Cannot observe model chain-of-thought directly (though may infer from outputs).
+\end{itemize}
+
+\subsection{Defender Goal}
+
+Prevent violation of governance predicate $\G(\tau)$ for trajectories $\tau$ under governance regimes to which operators, users, or affected parties are actually accountable.
+
+\subsection{System Model}
+
+\begin{itemize}[leftmargin=2em]
+\item Reasoning-capable model processes ambient content (documents, images, retrieved artifacts).
+\item Model or user actuates based on model outputs (code execution, API calls, file operations, information transmission).
+\item Deployment does not categorically prohibit core capabilities (code generation, analysis, tool use, file processing).
+\end{itemize}
+
+\begin{remark}
+These conditions describe current major deployments: Claude, ChatGPT, Gemini, Copilot, and others. We have not observed publicly documented deployments that close this attack surface while retaining the capabilities users demand.
+\end{remark}
+
+%==============================================================================
+\section{Why Pointwise Content Defenses Fail}
+\label{sec:defenses}
+%==============================================================================
+
+\subsection{Scope}
+
+This analysis addresses model-side pointwise content defenses: output filters, refusal training, semantic classifiers, and similar mechanisms that evaluate individual messages or outputs against builder-defined policy. Actuation-boundary controls (capability restrictions, authorization checks, provenance tracking) are a distinct defense class not addressed here, not because they fail, but because they operate at a different layer.
+
+Systems satisfying the threat model in Section~\ref{sec:threat-model} are in scope. Defenses that eliminate reasoning, ambient input, or actuation entirely are outside scope; they represent a different class of system that forfeits the capabilities users demand.
+
+\subsection{The Compositionality Assumption}
+
+Existing defenses define ``safe'' differently than we do here. Existing defenses focus on model output as judged by $\G_{\text{builder}}$, the model builder's safety regime. This is a rational decision made by companies operating at scale.
+
+We introduce a distinction:
+
+\begin{itemize}[leftmargin=2em]
+\item $\safeM(e)$: Element $e$ is safe by model builder standards.
+\item $\safeU(e)$: Element $e$ is safe for the user under their governance regime $\G$.
+\item $\safeG(\tau)$: Trajectory $\tau$ is safe under governance regime $\G$.
+\end{itemize}
+
+Model-side pointwise content defenses implicitly assume:
+\[
+\forall e \in \tau : \safeM(e) \implies \safeG(\tau)
+\]
+If every component is safe as defined by the model builder, the composition is safe.
+
+\begin{proposition}[Pointwise Safety Is Not Trajectory Safety]
+\label{prop:compositionality}
+There exist trajectories $\tau$ such that:
+\[
+\bigl( \forall e \in \tau : \safeM(e) \bigr) \land \bigl( \forall e \in \tau_{0 \ldots n-1} : \safeU(e) \bigr) \land \neg\safeU(\tau_n) \land \neg\safeG(\tau)
+\]
+Every element is safe by model builder standards. Every element except the last is safe for the user. Only the final step crosses the user's governance boundary. But once that step is taken, the trajectory violates $\G$.
+\end{proposition}
+
+\begin{proof}[Proof sketch]
+The puzzle example (Section 5) exhibits this structure. Each model output passes builder safety checks. Each user action except the last is locally reasonable. The final action (transmitting extracted payload, executing generated code, sharing sensitive data) crosses a governance boundary that was not represented in any individual element.
+
+More generally, any defense restricted to evaluating elements $e$ in isolation, without an enforceable trajectory predicate $\G$ and without non-bypassable actuation control, cannot guarantee trajectory safety for non-prefix-local governance properties. The counterexample is constructive: choose a trajectory where each prefix appears legitimate under $\safeM$ and $\safeU$ until a final irreversible actuation step crosses $\G$.
+\end{proof}
+
+\begin{remark}
+Pointwise content defenses fail as a \emph{category error}. They evaluate $\safeM(e)$ for elements. ARA produces harm at the level of $\safeG(\tau)$ for trajectories. The defenses are correctly implemented against the wrong predicate. This does not imply that all defenses fail; actuation-boundary controls, capability restrictions, and authorization checks operate at a different layer and may constrain the final step of an ARA trajectory.
+\end{remark}
+
+\subsection{Human Detection Is Possible}
+
+If at any time the user detects that the trajectory is approaching $\neg\safeG(\tau)$, the attack is discovered and can be thwarted. This requires predicting $\tau$ correctly before completion.
+
+We assert, but do not formally prove, that the difficulty of such prediction grows with the complexity of the technical and social attack. The user may be too focused on the million-dollar grand prize to check whether the binary file they just loaded into memory is dangerous.
+
+Additional difficulty dynamics include:
+
+\textbf{Observational asymmetry.} The human cannot perceive what the model perceives. High-frequency image artifacts, steganographic content, statistical regularities: these condition the model's state while remaining invisible to the human.
+
+\textbf{Chain-of-thought opacity.} In many deployments, the user sees conclusions but not reasoning. The process by which the model discovered and acted on seeds may be invisible.
+
+\textbf{Local benignity.} Each individual step appears helpful and correct. There is no single moment where the trajectory obviously becomes dangerous. The user must recognize a pattern across steps, not a red flag in any one step.
+
+\textbf{Trust dynamics.} Users engage capable assistants precisely because they trust the assistant's judgment. Maintaining sufficient skepticism to catch an ARA while still benefiting from the model's capabilities is a difficult calibration.
+
+We do not claim users are helpless. We claim the attack is designed to exploit the gap between what users can perceive and what conditions the model, the gap between local evaluation and trajectory-level harm, and the trust that makes capable assistants useful in the first place. A sufficiently vigilant user, examining every step with full skepticism, can catch the attack.
+
+\textbf{Common knowledge closes the gap slowly, but never completely.} Security awareness propagates through populations over time. Users now know to strip EXIF data from photos before posting online. They know not to photograph the back of their credit cards. They recognize phishing emails by their patterns. This knowledge was not innate; it was learned through exposure, education, and occasionally painful experience.
+
+ARA exploits a similar window of ignorance. As awareness spreads (``images can contain data models will act on,'' ``puzzles from untrusted sources may be adversarial,'' ``model reasoning can be steered by content you cannot see''), defensive behaviors will emerge.
+
+\textbf{Training alone cannot eliminate the issue.} Every corporate security team sends phishing test emails. Every quarter, despite repeated training and explicit warnings, some employees click. This is not a failure of training; it is a feature of human attention, workload, and trust. Phishing works at scale even when every individual in the population has been trained to detect it. ARA will follow the same pattern.
+
+%==============================================================================
+\section{Toward Mitigation: The Requirement for Architectural Independence}
+\label{sec:root-trust}
+%==============================================================================
+
+\subsection{The Structural Gap}
+
+Section~\ref{sec:defenses} establishes that model-side pointwise content defenses fail because safety is not compositional: $\safeM(e)$ for all elements does not imply $\safeG(\tau)$ for the trajectory. Existing content defenses evaluate elements. ARA operates on trajectories against external governance.
+
+What would a sufficient defense require?
+
+Trajectory-level evaluation requires a vantage point: something that observes the unfolding sequence, holds governance predicates, and can intervene. But if that vantage point is reachable from ambient inputs, adversaries can influence it, and influence over learned evaluators enables adversarial mis-evaluation. The evaluator becomes part of the attack surface.
+
+The requirement is \emph{architectural independence}: an evaluator that cannot be corrupted or fooled by the content it evaluates. Root trust, as defined by NIST, addresses the first property (integrity). Robustness to adversarial inputs addresses the second.
+
+\subsection{Root Trust Defined}
+
+NIST defines roots of trust as: ``Security primitives composed of hardware, firmware, and/or software that provide a set of trusted, security-critical functions. They must always behave in an expected manner because their misbehavior cannot be detected'' (NIST CSRC Glossary).
+
+This is the operative definition. ``Always behave in an expected manner'' does not mean the primitive is independent of inputs; it means the primitive's behavior is specified and its integrity must be assumed rather than verified at runtime. Roots of trust are security-critical evaluators whose code and state are protected from adversarial modification and bypass, even while they process untrusted inputs.
+
+In LLM deployments, traditional roots of trust often exist at lower layers (hardware, OS, service boundary). The open question for ARA is different: can we build a non-bypassable trajectory-level policy evaluator whose decisions do not reduce to attacker-controlled semantic content (or to the model's own self-report), and whose integrity is protected?
+
+\subsection{Root Trust in Security Engineering}
+
+The requirement for architectural independence is not novel. It is the foundation of security architecture across every domain.
+
+Operating systems distinguish kernel space from user space. The kernel enforces policy on processes; processes cannot modify the kernel. Without this separation, no access control is possible.
+
+Databases distinguish the permission system from the queries it governs. \texttt{GRANT} and \texttt{REVOKE} operate in a privileged layer that queries cannot reach.
+
+Hardware provides trusted execution environments (TPMs, secure enclaves, hardware security modules) where cryptographic operations occur in regions that software cannot observe or modify.
+
+In each case, the pattern is identical: security requires an evaluator that the controlled entity cannot corrupt. Thirty years of security engineering methodology (role-based access control, mandatory access control, cascading ALLOW/DENY policies, capability systems, audit logging) all depend on this foundation.
+
+\subsection{Influenceable vs.\ Corruptible vs.\ Fooled}
+
+We distinguish three failure modes that are easy to conflate:
+
+\textbf{Influenceable (by design).} A policy evaluator's output depends on its inputs. This is necessary for any nontrivial evaluator. A firewall is influenceable by packets; an OS is influenceable by syscalls; an LLM safety classifier is influenceable by text.
+
+\textbf{Corruptible (integrity failure).} An adversary can modify or bypass the evaluator's policy code or protected state. This is the kernel-memory / permission-table rewrite scenario.
+
+\textbf{Fooled (robustness failure).} The evaluator executes correctly but is driven into false negatives by adversarially chosen inputs. This is not corruption; it is mis-evaluation.
+
+ARA primarily exploits the third category. The adversary typically does not need to corrupt the enforcement substrate; it is enough to exploit the fact that trajectory-level governance requires semantic judgments under asymmetric information. Root trust addresses corruption; it does not by itself address being fooled.
+
+\subsection{Where the Gap Actually Is: Semantic Dependence}
+
+Many LLM deployments do include integrity-protected components at the service/OS/hardware boundary. The gap for ARA is not simply ``no root trust exists.'' The gap is that the evaluator needed to prevent trajectory-level governance violations is often implemented in, or depends on, the same semantic substrate the adversary can steer.
+
+In particular, when a system's safety decision depends on (i) attacker-controlled ambient content, (ii) the model's own narrative justification, or (iii) a learned classifier operating on the same untrusted semantics, then the evaluator becomes influenceable in the worst way: it can be adversarially driven into mis-evaluation while still executing correctly.
+
+The closest security analogy is not ``queries rewrite permission tables,'' but ``the untrusted process effectively supplies the security-relevant labels.'' If the system asks the model to explain why an action is safe and then treats that explanation as evidence, the system is asking the controlled entity to participate in policy enforcement. This is a form of self-policing that is structurally vulnerable under adaptive adversaries.
+
+\subsection{Integrity and Robustness}
+
+Architectural independence requires two distinct properties:
+
+\textbf{Integrity.} The evaluator cannot be modified by the content it evaluates. This is what traditional root trust provides. A TPM executes its function correctly because its code and state are protected from external modification.
+
+\textbf{Robustness.} The evaluator cannot be fooled by the content it evaluates. This is a separate requirement. A learned classifier with perfect integrity protection can still be driven to false negatives through adversarial inputs. You do not attack the math; you attack the implementation.
+
+Traditional root trust addresses integrity. It does not address robustness. If trajectory-level governance is implemented by a learned evaluator processing adversary-controlled content, that evaluator can be fooled even when executing correctly. The policy was not modified; it was misled.
+
+Current deployments often have integrity-protected foundations at lower layers, but they frequently do not provide (a) a non-bypassable actuation gate enforcing the relevant trajectory-level governance predicate, and (b) robustness when evaluation is performed by learned components on attacker-controlled semantics. In human-actuated settings, the enforcement boundary is additionally porous: the user can always choose to act on model output outside the system's control plane. These gaps (non-bypassability for the right predicate, and robustness under adaptive inputs) are what ARA exploits.
+
+\subsection{The Open Problem}
+
+How does one achieve architectural independence in LLM-based systems?
+
+Root trust can in principle be established at various architectural layers: hardware (TPMs, enclaves), operating system (process isolation), orchestration (privileged controller outside the model), or within the model's forward pass (privileged geometry; see Alioto, 2025). We do not claim any particular layer is the correct location. We claim architectural independence must exist somewhere, and current deployments lack it at any layer for the relevant threat model.
+
+The contribution of this paper is not to solve this problem but to establish why it must be solved. ARA demonstrates that without architectural independence, trajectory-level attacks are structurally undefensible.
+
+\textbf{Why training alone cannot suffice.} One might propose training models to detect adversarial placement: to recognize steganographic patterns, distrust unprovenanced evidence, or flag suspicious reasoning chains. This approach faces a structural disadvantage: the defender moves first, the attacker moves last.
+
+Any pattern the defender trains against, the attacker can observe and avoid. The attacker has unlimited time to probe the deployed model, discover what triggers defenses, and craft placements that evade them. Each defensive update reveals information; each revelation enables adaptation. Without a fixed point the attacker cannot adapt to (which is precisely what architectural independence provides), training-based defense is whack-a-mole with structural disadvantage. The defender publishes; the attacker iterates.
+
+Architectural independence can reduce the attacker's adaptive advantage by moving critical decisions onto enforcement mechanisms that do not expose a learnable boundary in the same semantic channel. This shifts the contest from ``evade my detector'' to ``obtain authorization/capability,'' which is a qualitatively different and historically more defensible security posture.
+
+%==============================================================================
+\section{Limitations and Open Problems}
+\label{sec:limitations}
+%==============================================================================
+
+\subsection{Scope of Contribution}
+
+This paper provides a formal framework for understanding a class of vulnerability. It does not provide:
+
+\textbf{Implementation.} No code, no prototype, no empirical validation accompanies this framework. The definitions, examples, and analysis are theoretical.
+
+\textbf{Complete threat coverage.} ARA describes attacks that operate through ambient channels, exploit reasoning capability, and manifest harm only at the trajectory level against external governance. Many attacks do not fit this pattern. Single-turn attacks, direct prompt injection, jailbreaks, adversarial examples: these remain important and are not addressed here.
+
+\textbf{Defense.} Section~\ref{sec:root-trust} establishes that architectural independence is necessary for defense. It does not establish that root trust is achievable at any particular architectural layer, or at what cost.
+
+\subsection{Empirical Validation}
+
+The examples in this paper are hypothetical. We do not provide a working demonstration.
+
+This is deliberate. Constructing a demonstration requires embedding adversarially placed seeds in content and inducing a reasoning model to act on them. The same capability that validates the framework could cause harm if replicated. Responsible disclosure does not require proof-of-concept exploits.
+
+\subsection{Governance Regime Design}
+
+The framework treats $\G$ as external and constrains it only to require actual accountability. This creates dependencies it cannot resolve: Who designs $\G$? How is $\G$ specified in computable form? What happens when governance regimes conflict? How does $\G$ evolve over time?
+
+These are problems the framework makes visible, not problems it solves.
+
+\subsection{Human Responsibility}
+
+ARA operates through a trust architecture that includes human actors. The framework identifies trust as the attack surface but does not eliminate human agency. Users retain choice. Informed consent is possible. Liability is unresolved: when ARA succeeds, who bears responsibility? These are legal questions, not technical ones.
+
+\subsection{Open Problems}
+
+\textbf{Achieving architectural independence in LLM systems.} At what architectural layer can root trust be established? At what cost to capability, latency, or user experience?
+
+\textbf{Trajectory-level benchmarks.} Evaluating ARA requires multi-turn trajectories, simulated actuation, embedded seeds, and governance regimes. No such benchmark exists.
+
+\textbf{Governance specification languages.} How should $\G$ be expressed? What formalisms remain tractable for evaluation?
+
+\textbf{Multi-agent dynamics.} How does ambient steering propagate through agent networks? The framework addresses single-model interactions and does not extend to multi-agent settings.
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+
+ARA is prompt injection's next evolution. As defenses against adversarial inputs improve (instruction hierarchies, injection monitors, trusted/untrusted separation), adversaries route around them. ARA requires no overt adversarial inputs. Every input is apparently benign under deployed screening. Every output is admissible under the model builder's safety regime. The model functions exactly as designed.
+
+The harm predicate is different. Prompt injection asks: did the model misbehave? ARA asks: did a correct trajectory cross a governance regime boundary external to the system?
+
+Pointwise content defenses fail as a category error. They check for model misbehavior. ARA never triggers that predicate. The safety training is not defeated; it is uninvolved. The trajectory proceeds through territory it does not cover because there is nothing to cover.
+
+Defense requires architectural independence: an evaluator that cannot be corrupted or fooled by the content it evaluates. This requires two properties. Integrity ensures the evaluator's policy cannot be modified by adversarial input; traditional root trust addresses this. Robustness ensures the evaluator cannot be driven to false negatives even when executing correctly; this remains an open problem for learned systems. Current LLM deployments lack both.
+
+Architectural independence is necessary but not sufficient. Humans retain agency. Governance regimes are external, contested, and often unspecified. The framework identifies the requirement; it does not deliver the implementation.
+
+The contribution of this paper is to define ARA precisely, establish why pointwise content defenses fail by construction, and identify what mitigation requires. The research agenda is clear: achieve architectural independence (both integrity and robustness) at a layer that addresses the threat model. Until then, the vulnerability remains structural.
+
+%==============================================================================
+\section*{References}
+%==============================================================================
+
+\begin{enumerate}[leftmargin=2em, label={[\arabic*]}]
+
+\item Alioto, J. P. (2025). Cognitive Kernel Networks: Root Trust for Privilege-Separated Reasoning in High-Dimensional Models. CKN Whitepaper v1.2.0.
+
+\item Ba\c{s}ar, T., \& Bernhard, P. (1995). \emph{H$_\infty$-Optimal Control and Related Minimax Design Problems: A Dynamic Game Approach}. Birkh\"auser.
+
+\item Blanchini, F., \& Miani, S. (2008). \emph{Set-Theoretic Methods in Control}. Birkh\"auser.
+
+\item Kalman, R. E. (1960). On the general theory of control systems. \emph{IFAC Proceedings Volumes}, 1(1), 491--502.
+
+\item Mitchell, I. M., Bayen, A. M., \& Tomlin, C. J. (2005). A time-dependent Hamilton-Jacobi formulation of reachable sets for continuous dynamic games. \emph{IEEE Transactions on Automatic Control}, 50(7), 947--957.
+
+\item National Institute of Standards and Technology. (n.d.). Roots of Trust. \emph{NIST CSRC Glossary}. \url{https://csrc.nist.gov/glossary/term/roots_of_trust}
+
+\item OpenAI. (2025). Understanding prompt injections. \url{https://openai.com/index/prompt-injections/}
+
+\item Pliny the Liberator. (2025). Jailbreak techniques repository. \url{https://github.com/elder-plinius/}
+
+\item Prajna, S., \& Jadbabaie, A. (2004). Safety verification of hybrid systems using barrier certificates. \emph{HSCC 2004}, 477--492.
+
+\item Sontag, E. D. (1998). \emph{Mathematical Control Theory: Deterministic Finite Dimensional Systems} (2nd ed.). Springer.
+
+\item Vogel, T. (2024). repeng: A Library for Representation Engineering. GitHub repository. \url{https://github.com/vgel/repeng}
+
+\item Vogel, T. (2025). Qwen Introspection. \url{https://vgel.me/posts/qwen-introspection/}
+
+\item Lumpenspace. (2024). Palinor: Tools for Latent Space Steering. GitHub repository. \url{https://github.com/lumpenspace/palinor}
+
+\end{enumerate}
+
+%==============================================================================
+\appendix
+\section{Formal Definitions}
+\label{sec:definitions}
+%==============================================================================
+
+\subsection{System Model}
+
+\begin{definition}[Core Forward Pass]
+Let $f_\theta : (h_{t-1}, x_t) \to h_t$ denote the deterministic core forward pass of an LLM with parameters $\theta$, where $h_t \in \mathbb{R}^d$ is the internal state at time $t$, and $x_t \in \X$ is the input token or perceptual embedding. For fixed $\theta$ and inputs, $f_\theta$ is deterministic up to hardware nondeterminism.
+\end{definition}
+
+\begin{definition}[Controller]
+Let $z_t = G_\theta(h_t)$ be the projection of internal state to logits, and let $a_t = K_\phi(z_t)$ be a controller that selects an action $a_t$ according to parameters $\phi$. Stochasticity arises at this layer.
+\end{definition}
+
+\begin{definition}[Symbolic Interface]
+The system emits discrete symbols evaluated by an external agent or evaluator $E : \text{Transcript} \to \{\text{correct}, \text{incorrect}, \text{unsafe}, \ldots\}$. These predicates are judgments applied post hoc by humans, benchmarks, or auxiliary systems.
+\end{definition}
+
+\subsection{Reachability and Conditioning}
+
+\begin{definition}[Reachable Set]
+The reachable set from state $h$ under input class $\X_{\text{allowed}}$ is:
+\[
+R(h) = \{ h' \in \mathbb{R}^d : \exists (x_1,\ldots,x_k) \text{ such that } h' = f_\theta^{(k)}(h, x_1,\ldots,x_k) \}
+\]
+This is the set of all states attainable from $h$ via finite sequences of allowed inputs.
+\end{definition}
+
+\begin{definition}[Conditioning]
+An input $x_t$ conditions the system by transitioning from $h_t$ to $h_{t+1} = f_\theta(h_t, x_t)$. This conditioning is irreversible: the system now operates from $R(h_{t+1})$ rather than $R(h_t)$.
+\end{definition}
+
+\subsection{Adversarial Input, Apparently Benign Input, and Adversarial Placement}
+
+We distinguish two independent axes: \emph{intent} (about the placer) and \emph{appearance} (about what runtime observers can detect).
+
+\begin{definition}[Overt Adversarial Input]
+\label{def:adversarial}
+An input is \emph{overt adversarial} if its content or form is recognizable as an instruction or policy-violating request under deployed filters and typical runtime review. Jailbreaks and prompt injections employ overt adversarial inputs; their adversarial nature is detectable by examining the input itself given appropriate screening.
+\end{definition}
+
+\begin{definition}[Apparently Benign Input]
+An input is \emph{apparently benign} if it passes the deployed screening regime and looks like ordinary data to the user at decision time. ``Apparently benign'' is an operational label about appearance, not a claim about intent.
+\end{definition}
+
+\begin{remark}[Benign as Observer-Relative]
+In any real attack, the adversary's intent is adversarial by definition. The distinction we draw is not about intent but about appearance under the scrutiny applied at runtime. In an ARA, the adversary encodes intent in artifacts that are apparently benign to the system and to a reasonable user: the content is treated as ordinary data and typically passes pointwise safety filters because it is not an overt instruction or policy-violating payload in isolation. ARA exploits this epistemic gap: adversarial intent expressed in forms that remain locally admissible until additional context (incident response, provenance, governance evaluation) makes the trajectory's harmfulness legible.
+\end{remark}
+
+\begin{definition}[Adversarial Placement]
+An input is \emph{adversarially placed} if a threat actor deliberately positions apparently benign content knowing that a reasoning model will discover, incorporate, and act on it in ways that serve the threat actor's objectives. The content itself is apparently benign; the placement is adversarial. For ARA, adversarial placement of apparently benign content is strictly distinguished from overt adversarial input.
+\end{definition}
+
+\subsection{Observational Asymmetry}
+
+\begin{definition}[Observational Asymmetry]
+The model and the human user operate on different projections of the input. The model ingests the full input and updates its internal state. The human observes only a lossy rendering. Information that conditions the model's state may be imperceptible to the human. The asymmetry runs both directions: the model knows nothing about the governance regime the user operates under.
+\end{definition}
+
+\subsection{Reasoning as Attack Surface}
+
+\begin{definition}[Reasoning Capability]
+A reasoning model engages in extended chains of inference: forming hypotheses, testing them against evidence, refining interpretations. This capability transforms the model from a passive describer into an active searcher. Reasoning capability is not strictly required by ARA, but it is a force multiplier.
+\end{definition}
+
+\subsection{Autonomous Engagement and Chain-of-Thought Opacity}
+
+\begin{definition}[Autonomous Engagement]
+A reasoning model may initiate analysis without explicit instruction. When such a model encounters content that appears to contain structure, its training disposes it to investigate.
+\end{definition}
+
+\begin{definition}[Chain-of-Thought Opacity]
+In many deployments, the model's chain-of-thought is not exposed to users. The process by which the model discovers and acts on data is invisible to human oversight. CoT opacity eliminates the only observational channel through which a human could detect steering in progress.
+\end{definition}
+
+\subsection{Governance and Trajectories}
+
+\begin{definition}[Ambient Input]
+An \emph{ambient input} is any input incorporated into the model's context that is: (a) not explicitly framed as an instruction, (b) treated as data, evidence, or environment, and (c) nevertheless capable of conditioning internal state.
+\end{definition}
+
+\begin{definition}[Governance Regime]
+A \emph{governance regime} $\G$ is an external rule system that defines admissibility of interactional trajectories when evaluated post hoc. A governance regime is one to which the operator, user, or an affected party is actually accountable: laws, regulations, institutional policies, contractual obligations, professional standards, or platform terms of service that carry real consequences for violation.
+\end{definition}
+
+\begin{definition}[Trajectory]
+A \emph{trajectory} $\tau = (h_0, h_1, \ldots, h_T)$ is a realized sequence of states arising from a sequence of inputs and controller actions. Associated with each trajectory is an output transcript.
+\end{definition}
+
+\subsection{Steering and Attack}
+
+\begin{definition}[Steering]
+\emph{Steering} is the process by which input $x_t$ affects $h_{t+1}$ on $R$. This is what inputs do.
+\end{definition}
+
+\begin{definition}[Ambient Reachability Attack]
+An \emph{Ambient Reachability Attack} is a situation in which:
+\begin{enumerate}
+\item A threat actor adversarially places apparently benign information in ambient content.
+\item A correctly-functioning model discovers this information through its normal analytical processes, operating within the bounds of builder-imposed safety constraints.
+\item Steering occurs.
+\item An external agent (human or automated) acts on model outputs, or the model acts autonomously.
+\item Steps 2--4 repeat and terminate based on the user's actions.
+\item The resulting trajectory $\tau$, when evaluated post hoc, satisfies $\G(\tau) = \text{violation}$ for a governance regime $\G$ to which the operator, user, or an affected party is actually accountable.
+\item No individual input in the trajectory is overt adversarial. This property is invariant: it holds during and after $\tau$. The model behaves within $K_\phi$ at all times.
+\end{enumerate}
+\end{definition}
+
+\begin{remark}
+We define the trajectory $\tau$ as an attack because that is the subject of this paper. However, the same trajectory may be benign under one governance regime and a violation under another. ``Attack'' is a relational property: it exists in the pair $(\tau, \G)$, not in $\tau$ alone.
+\end{remark}
+
+\end{document}
